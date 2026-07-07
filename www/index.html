@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#f7f5f2">
+  <title>N5 Vocab</title>
+  <script>
+    // On-screen error surface — phones have no visible console.
+    // If any script fails to load or throws, you SEE it instead of a dead button.
+    window.addEventListener('error', function (e) {
+      var b = document.getElementById('errbar') || (function () {
+        var d = document.createElement('div');
+        d.id = 'errbar';
+        d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;'
+          + 'background:#b02a2a;color:#fff;font:12px/1.4 monospace;padding:8px 10px;'
+          + 'white-space:pre-wrap;max-height:40vh;overflow:auto';
+        (document.body || document.documentElement).appendChild(d);
+        return d;
+      })();
+      var where = e.filename ? e.filename.split('/').pop() : '?';
+      b.textContent += '⚠ ' + (e.message || 'load error') + '  [' + where
+        + (e.lineno ? ':' + e.lineno : '') + ']\n';
+    }, true);
+  </script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body data-theme="light">
+
+  <!-- Top bar: persists across all views -->
+  <header class="topbar">
+    <button class="topbar__home" id="btnHome" aria-label="Główna">
+      <span class="topbar__title">N5</span>
+    </button>
+    <div class="topbar__right">
+      <span class="export-status" id="exportStatus"></span>
+      <button class="icon-btn" id="btnSettings" aria-label="Ustawienia">⚙</button>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- ============ HUB (default view) ============ -->
+    <section class="view view--active" id="view-hub">
+      <nav class="hub">
+        <button class="hub__tile" data-goto="vocabulary">
+          <span class="hub__jp">単語</span>
+          <span class="hub__label">Słownictwo</span>
+        </button>
+        <button class="hub__tile" data-goto="flashcards">
+          <span class="hub__jp">カード</span>
+          <span class="hub__label">Fiszki</span>
+        </button>
+        <button class="hub__tile" data-goto="kanji">
+          <span class="hub__jp">書き</span>
+          <span class="hub__label">Pisanie kanji</span>
+        </button>
+        <button class="hub__tile" data-goto="sentences">
+          <span class="hub__jp">文</span>
+          <span class="hub__label">Zdania</span>
+        </button>
+      </nav>
+
+    </section>
+
+    <!-- ============ VOCABULARY ============ -->
+    <section class="view" id="view-vocabulary">
+      <div class="view__head">
+        <h1 class="view__title">Słownictwo</h1>
+      </div>
+
+      <!-- add category -->
+      <form class="addcat" id="formAddCat">
+        <input type="text" id="inpNewCat" placeholder="Nowa kategoria (kanji)…" autocomplete="off">
+        <button type="submit" class="tool-btn">+ Kategoria</button>
+      </form>
+
+      <!-- table of contents -->
+      <nav class="toc" id="toc"></nav>
+
+      <!-- categories render here -->
+      <div id="vocabBody"></div>
+    </section>
+
+    <!-- ============ STUBS (built in later passes) ============ -->
+    <section class="view" id="view-flashcards">
+      <div class="view__head"><h1 class="view__title">Fiszki</h1></div>
+
+      <!-- setup: pick category -->
+      <div class="fc-setup" id="fcSetup">
+        <select id="fcCategory"></select>
+        <button class="tool-btn" id="fcStart">Start</button>
+      </div>
+
+      <!-- active session -->
+      <div class="fc-stage" id="fcStage" hidden>
+        <div class="fc-progress-num" id="fcCounter"></div>
+
+        <div class="flashcard" id="flashcard">
+          <div class="flashcard__inner">
+            <div class="flashcard__face flashcard__face--front">
+              <div class="fc-front-trans" id="fcTrans"></div>
+              <div class="fc-hint">dotknij, aby odwrócić</div>
+            </div>
+            <div class="flashcard__face flashcard__face--back">
+              <div class="fc-back-kanji" id="fcKanji"></div>
+              <div class="fc-back-reading" id="fcReading"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fc-answer">
+          <input type="text" id="fcInput" placeholder="wpisz czytanie (kana)…" autocomplete="off" autocapitalize="off">
+          <button class="tool-btn" id="fcSubmit">Sprawdź</button>
+        </div>
+        <div class="fc-feedback" id="fcFeedback"></div>
+        <div class="fc-next" id="fcNextWrap" hidden>
+          <button class="tool-btn" id="fcNext">Następna →</button>
+        </div>
+        <button class="tool-btn tool-btn--ghost" id="fcEnd">Zakończ sesję</button>
+      </div>
+
+      <!-- progress list -->
+      <div class="fc-list" id="fcList"></div>
+    </section>
+
+    <section class="view" id="view-kanji">
+      <!-- grid -->
+      <div id="kanjiGridView">
+        <div class="view__head"><h1 class="view__title">Pisanie kanji</h1></div>
+        <div class="kgrid" id="kanjiGrid"></div>
+      </div>
+
+      <!-- drawing -->
+      <div id="kanjiDraw" hidden>
+        <div class="kd-top">
+          <button class="tool-btn tool-btn--ghost" id="kdBack">← Siatka</button>
+          <span class="kd-prompt" id="kdPrompt"></span>
+          <div class="seg">
+            <button class="seg__btn seg--on" id="kdPractice">Ćwiczenie</button>
+            <button class="seg__btn" id="kdTest">Test</button>
+          </div>
+        </div>
+
+        <div class="kd-stage">
+          <div class="kd-left">
+            <div class="kd-canvas-box" id="kdCanvasBox">
+              <canvas id="kdGuide"></canvas>
+              <canvas id="kdRef"></canvas>
+              <canvas id="kdInk"></canvas>
+            </div>
+            <div class="kd-hint" id="kdHint"></div>
+            <div class="kd-result" id="kdResult"></div>
+            <div class="kd-controls">
+              <button class="tool-btn tool-btn--ghost" id="kdClear">Wyczyść</button>
+              <button class="tool-btn" id="kdRetry" hidden>Jeszcze raz</button>
+            </div>
+          </div>
+          <div class="kd-cheat" id="kdCheat"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-sentences">
+      <div class="view__head"><h1 class="view__title">Zdania</h1></div>
+      <p class="stub">Ta sekcja zostanie zbudowana w następnym kroku.</p>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="view" id="view-settings">
+      <div class="view__head"><h1 class="view__title">Ustawienia</h1></div>
+
+      <div class="settings-group">
+        <h2>Wygląd</h2>
+        <div class="setting-row">
+          <span>Tryb ciemny</span>
+          <label class="switch">
+            <input type="checkbox" id="setDark">
+            <span class="switch__track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2>Paleta kolorów</h2>
+        <div class="palette-grid" id="paletteGrid"></div>
+      </div>
+
+      <div class="settings-group">
+        <h2>Pisanie kanji</h2>
+        <div class="setting-row">
+          <span>Tolerancja oceny</span>
+          <select id="setTolerance">
+            <option value="lenient">łagodna</option>
+            <option value="normal">normalna</option>
+            <option value="strict">surowa</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2>Kategorie</h2>
+        <div class="cat-manage" id="catManage"></div>
+      </div>
+
+      <div class="settings-group">
+        <h2>Kopia zapasowa</h2>
+        <div class="setting-row">
+          <span>Eksportuj wszystkie dane</span>
+          <button class="tool-btn" id="btnExport">Eksport</button>
+        </div>
+        <div class="setting-row">
+          <span>Importuj z pliku</span>
+          <button class="tool-btn tool-btn--ghost" id="btnImport">Import</button>
+          <input type="file" id="fileImport" accept="application/json" hidden>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ MODAL: add/edit word ============ -->
+  <div class="modal" id="modalWord" hidden>
+    <div class="modal__box">
+      <h2 class="modal__title" id="modalWordTitle">Nowe słowo</h2>
+      <form id="formWord">
+        <label class="fld">
+          <span class="fld__lbl">Kanji</span>
+          <input type="text" id="wKanji" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl">Hiragana / Katakana</span>
+          <input type="text" id="wReading" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl">Tłumaczenie (PL)</span>
+          <input type="text" id="wTrans" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl">Część mowy <em>(opcjonalnie)</em></span>
+          <select id="wPos">
+            <option value="">— (brak, słowo nie trafi do „Zdań")</option>
+            <option value="noun">rzeczownik</option>
+            <option value="verb">czasownik</option>
+            <option value="i-adj">przymiotnik -i</option>
+            <option value="na-adj">przymiotnik -na</option>
+            <option value="adverb">przysłówek</option>
+            <option value="counter">liczebnik / licznik</option>
+            <option value="particle">partykuła</option>
+            <option value="expression">wyrażenie</option>
+          </select>
+        </label>
+        <input type="hidden" id="wCategory">
+        <input type="hidden" id="wId">
+
+        <div class="modal__actions">
+          <button type="button" class="tool-btn tool-btn--danger" id="btnDeleteWord" hidden>Usuń</button>
+          <div class="modal__actions-right">
+            <button type="button" class="tool-btn tool-btn--ghost" id="btnCancelWord">Anuluj</button>
+            <button type="submit" class="tool-btn">Zapisz</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: word detail ============ -->
+  <div class="modal" id="modalDetail" hidden>
+    <div class="modal__box modal__box--detail">
+      <button class="modal__close" id="btnCloseDetail" aria-label="Zamknij">×</button>
+      <div class="detail" id="detailBody"></div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/vocabulary.js"></script>
+  <script src="js/flashcards.js"></script>
+  <script src="js/kanji.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

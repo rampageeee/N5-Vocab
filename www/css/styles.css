@@ -1,0 +1,471 @@
+/* ============================================================
+   THEME TOKENS
+   Light is default. Dark keeps the kanji/reading/translation
+   colour LOGIC but lifts each hue for legibility on dark ground.
+   ============================================================ */
+:root,
+[data-theme="light"] {
+  --bg:        #f7f5f2;
+  --surface:   #ffffff;
+  --surface-2: #efece7;
+  --border:    #ddd7cf;
+  --text:      #2a2622;
+  --text-dim:  #7a736a;
+
+  --kanji:     #9b1c1c;  /* dark red   */
+  --reading:   #7a4a1e;  /* brown      */
+  --trans:     #1d4ed8;  /* blue       */
+
+  --accent:    #2a2622;
+  --danger:    #b02a2a;
+
+  --star-off:  #cfc8bd;
+  --bronze:    #cd7f32;
+  --silver:    #9ca3af;
+  --gold:      #d4af37;
+
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+[data-theme="dark"] {
+  --bg:        #17161a;
+  --surface:   #212026;
+  --surface-2: #2b2a31;
+  --border:    #3a3842;
+  --text:      #e9e6e0;
+  --text-dim:  #9c968d;
+
+  --kanji:     #f0736f;  /* lighter red */
+  --reading:   #d6a878;  /* tan/brown   */
+  --trans:     #7aa2f7;  /* lighter blue*/
+
+  --accent:    #e9e6e0;
+  --danger:    #e06666;
+
+  --star-off:  #4a4852;
+  --bronze:    #d99a5c;
+  --silver:    #c3c8d0;
+  --gold:      #ecd06b;
+
+  --shadow: 0 2px 10px rgba(0,0,0,.4);
+}
+
+/* ============================================================
+   PALETTES  (independent axis: data-palette on <body>)
+   Theme owns bg/surface/border/stars. Palette overrides ONLY the
+   three semantic text hues. Each palette defines a light + dark
+   variant so switching theme re-tunes the triad, never reuses a
+   light hue on dark ground (spec §7 legibility clause).
+
+   Every triad guarantees three-way separation (kanji≠reading≠trans,
+   not just each≠bg) and avoids collision with bronze/silver/gold.
+   ============================================================ */
+
+/* Five seasonal palettes. Roles per user rule: kanji = boldest/most-red
+   of the source triad, reading (hiragana) = most neutral, trans = remaining.
+   Light + dark variants derived by normalising lightness for ≥4.5:1 contrast
+   on each ground while holding hue. Where the source triad shares a hue
+   (summer's reds, spring's greens), trans is hue-nudged for separation;
+   fall's reading=trans are intentionally identical (source duplicate). */
+
+/* 1 — Summer */
+[data-palette="summer"][data-theme="light"] { --kanji:#601118; --reading:#304034; --trans:#5f1132; }
+[data-palette="summer"][data-theme="dark"]  { --kanji:#e1515e; --reading:#8ba792; --trans:#e05293; }
+
+/* 2 — Winter */
+[data-palette="winter"][data-theme="light"] { --kanji:#1a3956; --reading:#313a3f; --trans:#5c4114; }
+[data-palette="winter"][data-theme="dark"]  { --kanji:#639bcf; --reading:#8d9da5; --trans:#dba957; }
+
+/* 3 — Fall */
+[data-palette="fall"][data-theme="light"] { --kanji:#2e2749; --reading:#494627; --trans:#494627; }
+[data-palette="fall"][data-theme="dark"]  { --kanji:#867ab8; --reading:#b8b17a; --trans:#b8b17a; }
+
+/* 4 — Spring */
+[data-palette="spring"][data-theme="light"] { --kanji:#403035; --reading:#313f33; --trans:#30403c; }
+[data-palette="spring"][data-theme="dark"]  { --kanji:#a88a94; --reading:#8da58f; --trans:#8aa8a1; }
+
+/* 5 — Geisha */
+[data-palette="geisha"][data-theme="light"] { --kanji:#601010; --reading:#303040; --trans:#4a2e27; }
+[data-palette="geisha"][data-theme="dark"]  { --kanji:#e25050; --reading:#8a8aa8; --trans:#b98779; }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html {
+  background: var(--bg);   /* html always fills the viewport; paints below content */
+  min-height: 100%;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", "Noto Sans JP", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+/* Japanese text wants a font that has kanji; browsers fall back,
+   but hint stacks per role. */
+.jp { font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Sans", system-ui, sans-serif; }
+
+/* ============================================================ TOPBAR */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem .9rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar__home {
+  background: none; border: none; color: var(--text);
+  font-size: 1.25rem; font-weight: 700; cursor: pointer; padding: .2rem .4rem;
+}
+.topbar__title { letter-spacing: .05em; }
+.topbar__right { display: flex; align-items: center; gap: .6rem; }
+.export-status { font-size: .72rem; color: var(--text-dim); }
+.export-status--warn { color: var(--danger); font-weight: 600; }
+.icon-btn {
+  background: none; border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; width: 40px; height: 40px; font-size: 1.1rem; cursor: pointer;
+}
+
+/* ============================================================ VIEWS */
+.view { display: none; padding: 1rem; max-width: 780px; margin: 0 auto; }
+.view--active { display: block; }
+.view__head { margin-bottom: 1rem; }
+.view__title { font-size: 1.4rem; margin: 0; }
+.stub { color: var(--text-dim); }
+
+/* ============================================================ HUB */
+.hub {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .9rem;
+  margin-bottom: 1.5rem;
+}
+.hub__tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .35rem; padding: 1.6rem 1rem; min-height: 130px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  color: var(--text); cursor: pointer; box-shadow: var(--shadow);
+  transition: transform .08s ease;
+}
+.hub__tile:active { transform: scale(.97); }
+.hub__jp { font-size: 2rem; font-weight: 700; }
+.hub__label { font-size: .85rem; color: var(--text-dim); }
+.hub__tools { display: flex; gap: .6rem; flex-wrap: wrap; }
+
+/* ============================================================ BUTTONS */
+.tool-btn {
+  background: var(--accent); color: var(--bg);
+  border: none; border-radius: 10px; padding: .6rem 1rem;
+  font-size: .9rem; cursor: pointer;
+}
+.tool-btn--ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.tool-btn--danger { background: var(--danger); color: #fff; }
+
+/* ============================================================ ADD CATEGORY */
+.addcat { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+.addcat input {
+  flex: 1; padding: .6rem .7rem; font-size: 1rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+
+/* ============================================================ TOC */
+.toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+.toc a {
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  color: var(--kanji); text-decoration: none;
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: .35rem .7rem; border-radius: 999px; font-size: 1rem;
+}
+.toc:empty { display: none; }
+
+/* ============================================================ CATEGORY BLOCKS */
+.cat { margin-bottom: 2.5rem; scroll-margin-top: 60px; }
+.cat__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: .5rem;
+}
+.cat__name {
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  font-size: 1.3rem; font-weight: 700; color: var(--kanji);
+}
+.cat__empty { color: var(--text-dim); font-size: .85rem; padding: .5rem 0; }
+
+.vtable { width: 100%; border-collapse: collapse; }
+.vtable th {
+  text-align: left; font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-dim); font-weight: 600;
+  padding: .3rem .4rem; border-bottom: 1px solid var(--border);
+}
+.vtable td {
+  padding: .55rem .4rem; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.vtable tr:last-child td { border-bottom: none; }
+
+.col-stars { width: 1%; white-space: nowrap; }
+.col-edit  { width: 1%; text-align: right; }
+
+.cell-kanji   { color: var(--kanji);   font-weight: 600; font-size: 1.15rem;
+                font-family: "Noto Sans JP", system-ui, sans-serif; cursor: pointer; }
+.cell-reading { color: var(--reading); font-family: "Noto Sans JP", system-ui, sans-serif; }
+.cell-trans   { color: var(--trans); }
+
+.stars { display: inline-flex; gap: 1px; }
+.star  { font-size: .95rem; line-height: 1; filter: grayscale(1); opacity: .4; }
+.star--on { filter: none; opacity: 1; }
+/* colour tint for the "on" state via text shadow trick isn't reliable on emoji;
+   we swap to filled unicode + colour instead */
+.star.b { color: var(--star-off); }
+.star.s { color: var(--star-off); }
+.star.g { color: var(--star-off); }
+.star.b.star--on { color: var(--bronze); }
+.star.s.star--on { color: var(--silver); }
+.star.g.star--on { color: var(--gold); }
+
+.edit-btn {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 1.1rem; cursor: pointer; padding: .2rem .3rem;
+}
+
+.addword-row td { text-align: center; padding: .4rem; }
+.addword-btn {
+  background: var(--surface-2); border: 1px dashed var(--border);
+  color: var(--text-dim); border-radius: 8px; padding: .4rem .9rem;
+  cursor: pointer; font-size: .9rem; width: 100%;
+}
+
+/* ============================================================ MODALS */
+.modal {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); padding: 1rem;
+}
+.modal[hidden] { display: none; }
+.modal__box {
+  background: var(--surface); border-radius: 16px; padding: 1.2rem;
+  width: 100%; max-width: 420px; box-shadow: var(--shadow);
+  max-height: 90vh; overflow-y: auto;
+}
+.modal__box--detail { max-width: 480px; position: relative; text-align: center; }
+.modal__title { margin: 0 0 1rem; font-size: 1.2rem; }
+.modal__close {
+  position: absolute; top: .5rem; right: .7rem;
+  background: none; border: none; font-size: 1.8rem; line-height: 1;
+  color: var(--text-dim); cursor: pointer;
+}
+.modal__actions {
+  display: flex; align-items: center; justify-content: space-between; margin-top: 1rem;
+}
+.modal__actions-right { display: flex; gap: .5rem; margin-left: auto; }
+
+.fld { display: block; margin-bottom: .8rem; }
+.fld__lbl { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: .25rem; }
+.fld__lbl em { font-style: normal; opacity: .7; }
+.fld input, .fld select {
+  width: 100%; padding: .55rem .6rem; font-size: 1rem;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+
+/* ============================================================ DETAIL VIEW */
+.detail__kanji {
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  font-size: 5rem; color: var(--kanji); line-height: 1; margin: .5rem 0;
+}
+.detail__reading { color: var(--reading); font-size: 1.4rem; }
+.detail__trans   { color: var(--trans); font-size: 1.2rem; margin-bottom: 1rem; }
+.detail__stroke-note {
+  font-size: .8rem; color: var(--text-dim);
+  background: var(--surface-2); border: 1px dashed var(--border);
+  border-radius: 8px; padding: .7rem; margin: 1rem 0;
+}
+.detail__chars { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin: 1rem 0; }
+.detail__char {
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  font-size: 2rem; color: var(--kanji);
+  border: 1px solid var(--border); border-radius: 10px;
+  width: 64px; height: 64px; display: flex; align-items: center; justify-content: center;
+}
+.detail__draw-link { margin-top: .5rem; }
+
+/* ============================================================ FLASHCARDS */
+.fc-setup { display: flex; flex-direction: column; gap: .8rem; align-items: center; }
+.fc-setup select {
+  width: 100%; max-width: 320px; padding: .6rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; font-size: 1rem;
+}
+.fc-progress-num { font-size: .8rem; color: var(--text-dim); margin: .5rem 0; text-align: center; }
+
+.fc-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+
+/* the 3D card */
+.flashcard {
+  width: 100%; max-width: 320px; aspect-ratio: 4 / 3;
+  perspective: 1000px; cursor: pointer;
+}
+.flashcard__inner {
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  transition: transform .5s cubic-bezier(.2,.7,.2,1);
+}
+.flashcard.is-flipped .flashcard__inner { transform: rotateY(180deg); }
+.flashcard__face {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .5rem; padding: 1rem; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; box-shadow: var(--shadow);
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.flashcard__face--back { transform: rotateY(180deg); }
+.fc-front-trans { color: var(--trans); font-size: 1.5rem; }
+.fc-hint { position: absolute; bottom: .6rem; font-size: .7rem; color: var(--text-dim); }
+.fc-back-kanji {
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  color: var(--kanji); font-size: 2.6rem;
+}
+.fc-back-reading { color: var(--reading); font-size: 1.3rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif; }
+
+.fc-answer { display: flex; gap: .5rem; width: 100%; max-width: 320px; }
+.fc-answer input {
+  flex: 1; padding: .6rem .7rem; font-size: 1.05rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.fc-feedback { min-height: 1.4rem; font-size: .95rem; text-align: center; }
+.fc-feedback--ok   { color: #2f8f4e; }
+.fc-feedback--bad  { color: var(--danger); }
+.fc-feedback--dim  { color: var(--text-dim); }
+.fc-next { display: flex; gap: .5rem; }
+
+/* progress list below */
+.fc-list { margin-top: 2rem; }
+.fc-list__toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .7rem .9rem; font-size: 1rem; cursor: pointer;
+}
+.fc-list__chev { color: var(--text-dim); }
+.fc-list__body { margin-top: .6rem; }
+.fc-list__filter { margin-bottom: .6rem; }
+.fc-list__filter select {
+  padding: .4rem .6rem; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.fc-list table { width: 100%; border-collapse: collapse; }
+.fc-list td, .fc-list th { padding: .4rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+.fc-list th { text-align: left; color: var(--text-dim); font-size: .72rem; text-transform: uppercase; }
+.fc-pts { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ============================================================ SETTINGS */
+.settings-group { margin-bottom: 2rem; }
+.settings-group h2 { font-size: 1rem; margin: 0 0 .6rem; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .04em; }
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .6rem 0; border-bottom: 1px solid var(--border); gap: 1rem;
+}
+.setting-row:last-child { border-bottom: none; }
+
+.palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.palette-card {
+  border: 2px solid var(--border); border-radius: 12px; padding: .7rem;
+  background: var(--surface); cursor: pointer; text-align: left;
+}
+.palette-card.is-active { border-color: var(--accent); }
+.palette-card__name { font-size: .85rem; margin-bottom: .4rem; }
+.palette-swatches { display: flex; gap: .35rem; }
+.palette-swatches span { width: 26px; height: 26px; border-radius: 6px; }
+
+.cat-manage { display: flex; flex-direction: column; gap: .4rem; }
+.cat-manage__row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .5rem .7rem; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.cat-manage__name { font-family: "Noto Sans JP", system-ui, sans-serif; color: var(--kanji); }
+.cat-manage__del {
+  background: none; border: none; color: var(--danger);
+  font-size: 1.1rem; cursor: pointer; padding: .2rem .4rem;
+}
+
+/* toggle switch */
+.switch { position: relative; width: 52px; height: 30px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch__track {
+  position: absolute; inset: 0; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px; transition: .2s;
+}
+.switch__track::before {
+  content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px;
+  background: var(--accent); border-radius: 50%; transition: .2s;
+}
+.switch input:checked + .switch__track::before { transform: translateX(22px); }
+
+/* ============================================================ KANJI DRAWING */
+.kgrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: .6rem;
+}
+.ktile {
+  display: flex; flex-direction: column; align-items: center; gap: .3rem;
+  padding: .8rem .4rem; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; cursor: pointer; color: var(--text);
+}
+.ktile--nodata { opacity: .45; cursor: default; }
+.ktile__ch { font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.9rem; color: var(--kanji); }
+.ktile__prog { font-size: .72rem; color: var(--text-dim); }
+
+.kd-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; flex-wrap: wrap; }
+.kd-prompt {
+  font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.15rem;
+  color: var(--reading);
+}
+.seg { margin-left: auto; display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.seg__btn { background: var(--surface); color: var(--text-dim); border: none; padding: .45rem .8rem; font: inherit; cursor: pointer; }
+.seg--on { background: var(--accent); color: var(--bg); }
+
+.kd-stage { display: flex; flex-direction: column; gap: 1rem; align-items: center; }
+.kd-left { width: 100%; max-width: 400px; }
+
+.kd-canvas-box {
+  position: relative; width: 100%; aspect-ratio: 1;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  touch-action: none; overflow: hidden;
+}
+.kd-canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#kdInk { z-index: 3; } #kdRef { z-index: 2; } #kdGuide { z-index: 1; }
+
+.kd-hint { text-align: center; color: var(--text-dim); font-size: .85rem; margin-top: .6rem; min-height: 1.2rem; }
+.kd-result { text-align: center; font-size: 1rem; margin: .3rem 0; min-height: 1.4rem; }
+.kd-result--ok { color: #2f8f4e; } .kd-result--bad { color: var(--danger); }
+.kd-controls { display: flex; gap: .5rem; justify-content: center; margin-top: .4rem; }
+
+.kd-cheat {
+  width: 100%; max-width: 400px; padding: 1rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+}
+.cheat__row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+  font-size: 1.3rem; margin-bottom: .8rem; }
+.cheat__order { display: flex; justify-content: center; margin: .6rem 0; }
+.cheat__order svg { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; width: 150px; height: 150px; }
+.cheat__prog { text-align: center; font-size: .95rem; color: var(--text-dim); }
+
+/* desktop: canvas and cheat side by side, cheat always visible */
+@media (min-width: 720px) {
+  .kd-stage { flex-direction: row; align-items: flex-start; justify-content: center; }
+  .kd-cheat { align-self: stretch; max-width: 300px; }
+  .cheat__order svg { width: 180px; height: 180px; }
+}
+
+/* ============================================================ DESKTOP */
+@media (min-width: 620px) {
+  .hub { grid-template-columns: repeat(4, 1fr); }
+  .palette-grid { grid-template-columns: repeat(3, 1fr); }
+}
