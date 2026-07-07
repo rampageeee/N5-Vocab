@@ -1,31 +1,29 @@
 /* ============================================================
    KANJI DRAWING SECTION
-   Grid of the vocab's unique kanji (per-character), each a tile
-   with silver-progress. Tap → canvas. Practice mode traces +
-   gates stroke-by-stroke + cheat sheet. Test mode is blind,
-   scores once, feeds the silver-5 loop (DB.recordKanjiPass).
-
-   Parser + scorer are lifted from the tuning harness, proven
-   against real KanjiVG data. Stroke data loads lazily from
-   data/kanji-data.js (window.KANJI_DATA) on first entry.
+   Grid of the vocab's unique kanji, each a tile with silver
+   progress. Practice traces + gates stroke-by-stroke; the cheat
+   panel now lists EVERY dictionary word that uses this kanji
+   (was: one big stroke-order diagram + a single word, which both
+   mislabelled multi-kanji glyphs and hid the character's real
+   spread across the dictionary). Test mode is blind, scores once,
+   feeds the silver-5 loop.
    ============================================================ */
 const Kanji = (() => {
 
   const esc = s => (s || '').replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const t = (k, ...a) => I18N.t(k, ...a);
   const el = id => document.getElementById(id);
 
   const VBOX = 109, N = 48;
 
-  // Tolerance presets. Each: distance thresholds (109-frame) + dir gate +
-  // ramp = multiplier past which error scores 0. Lower ramp = stricter tail.
   const TOL = {
     lenient: { pos: 26, shape: 24, dir: 0.0, ramp: 2.0 },
     normal:  { pos: 18, shape: 16, dir: 0.3, ramp: 1.6 },
-    strict:  { pos: 10, shape:  9, dir: 0.6, ramp: 1.3 }   // genuinely strict tail
+    strict:  { pos: 10, shape:  9, dir: 0.6, ramp: 1.3 }
   };
 
-  /* ---------- KanjiVG path parse (M/m L/l C/c → polyline) ---------- */
+  /* ---------- KanjiVG path parse ---------- */
   function parsePath(d) {
     const toks = d.match(/[MmLlCcZz]|-?\d*\.?\d+(?:e-?\d+)?/g) || [];
     let i = 0, cx = 0, cy = 0, start = null, pts = [], cmd = null;
@@ -82,7 +80,7 @@ const Kanji = (() => {
   }
   const centroid = p => { let sx=0, sy=0; p.forEach(q => { sx+=q.x; sy+=q.y; }); return { x:sx/p.length, y:sy/p.length }; };
 
-  /* ---------- scoring (endpoint direction, decoupled from shape) ---------- */
+  /* ---------- scoring ---------- */
   function scoreStroke(userPts, ref) {
     const u = resample(userPts, N);
     if (u.length < 2) return null;
@@ -98,14 +96,14 @@ const Kanji = (() => {
     const dir = (ul > 0 && rl > 0) ? (uv.x*rv.x + uv.y*rv.y) / (ul*rl) : 0;
     return { pos, shape, dir };
   }
-  function grade(s, t) {
-    const q = (err, tol) => Math.max(0, Math.min(1, 1 - err / (t.ramp * tol)));
-    const qPos = q(s.pos, t.pos), qShape = q(s.shape, t.shape);
+  function grade(s, tl) {
+    const q = (err, tol) => Math.max(0, Math.min(1, 1 - err / (tl.ramp * tol)));
+    const qPos = q(s.pos, tl.pos), qShape = q(s.shape, tl.shape);
     let qDir;
-    if (s.dir >= t.dir) qDir = 0.5 + 0.5 * (s.dir - t.dir) / ((1 - t.dir) || 1);
-    else                qDir = 0.5 * (s.dir + 1) / ((t.dir + 1) || 1);
+    if (s.dir >= tl.dir) qDir = 0.5 + 0.5 * (s.dir - tl.dir) / ((1 - tl.dir) || 1);
+    else                 qDir = 0.5 * (s.dir + 1) / ((tl.dir + 1) || 1);
     qDir = Math.max(0, Math.min(1, qDir));
-    return Math.cbrt(qPos * qShape * qDir);   // weakest-link
+    return Math.cbrt(qPos * qShape * qDir);
   }
 
   /* ---------- lazy data load ---------- */
@@ -133,11 +131,11 @@ const Kanji = (() => {
   /* ---------- grid ---------- */
   function render() {
     const wrap = el('kanjiGrid');
-    wrap.innerHTML = '<p class="stub">Ładowanie danych kanji…</p>';
+    wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loading'))}</p>`;
     ensureData(ok => {
-      if (!ok) { wrap.innerHTML = '<p class="stub">Nie udało się wczytać data/kanji-data.js.</p>'; return; }
+      if (!ok) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loadFail'))}</p>`; return; }
       const chars = DB.uniqueKanji();
-      if (chars.length === 0) { wrap.innerHTML = '<p class="stub">Brak kanji. Dodaj słowa w Słownictwie.</p>'; return; }
+      if (chars.length === 0) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.empty'))}</p>`; return; }
       wrap.innerHTML = chars.map(ch => {
         const has = !!(window.KANJI_DATA && window.KANJI_DATA[ch]);
         const prog = DB.kanjiProgress(ch);
@@ -153,23 +151,28 @@ const Kanji = (() => {
 
   /* ---------- canvas session ---------- */
   let SIZE = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
-  let curCh = null, ref = null, refRaw = null, curReading = '', curTrans = '';
-  let mode = 'practice';         // 'practice' | 'test'
+  let curCh = null, ref = null, refRaw = null;
+  let mode = 'practice';
   let strokes = [], cur = null;
   let gg, rg, ig, box;
 
   const toGlyph  = p => ({ x: p.x * (VBOX / SIZE), y: p.y * (VBOX / SIZE) });
   const toCanvas = p => ({ x: p.x * (SIZE / VBOX), y: p.y * (SIZE / VBOX) });
 
+  // For the blind Test cue: a single reading from any word using this
+  // kanji (imperfect — a glyph reads differently across words — but the
+  // Practice cheat below shows the full spread, so the crutch is honest).
+  function testCue() {
+    const w = DB.allWords().find(x => DB.kanjiOf(x.kanji).includes(curCh));
+    if (!w) return t('kanji.testMemPrompt');
+    return w.translation ? `${w.reading} · ${w.translation}` : w.reading;
+  }
+
   function openChar(ch) {
     curCh = ch;
     ref = strokesFor(ch);
     refRaw = rawFor(ch);
     if (!ref) return;
-    // prompt from a word using this kanji — reading (hiragana), never the glyph
-    const w = DB.allWords().find(x => DB.kanjiOf(x.kanji).includes(ch));
-    curReading = w ? w.reading : '';
-    curTrans = w ? w.translation : '';
     strokes = []; cur = null;
     el('kanjiGridView').hidden = true;
     el('kanjiDraw').hidden = false;
@@ -189,10 +192,11 @@ const Kanji = (() => {
     el('kdPractice').classList.toggle('seg--on', m === 'practice');
     el('kdTest').classList.toggle('seg--on', m === 'test');
     el('kdCheat').hidden = (m !== 'practice');
-    // prompt is the reading (hiragana) + meaning — never the kanji glyph
-    el('kdPrompt').textContent = curReading
-      ? (curTrans ? `${curReading} · ${curTrans}` : curReading)
-      : (m === 'test' ? '（narysuj z pamięci）' : '');
+    el('kdPractice').textContent = t('kanji.practice');
+    el('kdTest').textContent = t('kanji.test');
+    // Practice shows the full word list in the cheat, so the header stays
+    // clean; Test needs a single cue to draw from.
+    el('kdPrompt').textContent = (m === 'test') ? testCue() : '';
     el('kdResult').textContent = '';
     el('kdResult').className = 'kd-result';
     el('kdRetry').hidden = true;
@@ -225,14 +229,12 @@ const Kanji = (() => {
     gg.stroke(); gg.setLineDash([]); gg.globalAlpha = 1;
   }
 
-  // Practice: faint full target overlay. Test: nothing (blind).
   function drawRef() {
     if (!rg) return;
     rg.clearRect(0, 0, SIZE, SIZE);
     if (mode !== 'practice' || !refRaw) return;
     const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
     refRaw.forEach((raw, idx) => {
-      // already-completed strokes solid-ish, upcoming faint
       rg.strokeStyle = col;
       rg.globalAlpha = idx < strokes.length ? 0.28 : 0.13;
       rg.lineWidth = 6; rg.lineCap = 'round'; rg.lineJoin = 'round';
@@ -240,7 +242,6 @@ const Kanji = (() => {
       raw.forEach((p, k) => { const c = toCanvas(p); k ? rg.lineTo(c.x, c.y) : rg.moveTo(c.x, c.y); });
       rg.stroke();
     });
-    // highlight the next expected stroke's start
     if (strokes.length < refRaw.length) {
       const s = toCanvas(refRaw[strokes.length][0]);
       rg.globalAlpha = 1; rg.fillStyle = col;
@@ -281,25 +282,21 @@ const Kanji = (() => {
 
   function commitStroke(raw) {
     if (mode === 'practice') {
-      // gate: must match the expected stroke (looser than Test) to advance
       const idx = strokes.length;
-      const t = TOL[DB.getTolerance()];
-      const g = grade(scoreStroke(raw.map(toGlyph), ref[idx]), practiceTol(t));
+      const tl = TOL[DB.getTolerance()];
+      const g = grade(scoreStroke(raw.map(toGlyph), ref[idx]), practiceTol(tl));
       if (g >= 0.5) {
         strokes.push(raw);
-        drawRef(); renderCheat(); updateHint();
+        drawRef(); updateHint();
         if (strokes.length === ref.length) {
-          el('kdResult').textContent = 'Wszystkie kreski zaliczone ✓';
+          el('kdResult').textContent = t('kanji.allStrokes');
           el('kdResult').className = 'kd-result kd-result--ok';
         }
       } else {
-        // reject: flash, don't advance
-        el('kdResult').textContent = 'Spróbuj tę kreskę jeszcze raz.';
+        // Reject: message only. onUp's trailing redrawInk() drops the
+        // rejected ink (it was never pushed to strokes).
+        el('kdResult').textContent = t('kanji.retryStroke');
         el('kdResult').className = 'kd-result kd-result--bad';
-        setTimeout(() => { redrawInk(); }, 0);
-        strokes = strokes;  // unchanged; drop the rejected ink on next redraw
-        // remove rejected stroke visually
-        redrawInk();
       }
     } else {
       strokes.push(raw);
@@ -308,39 +305,34 @@ const Kanji = (() => {
     }
   }
 
-  // Practice gate is more forgiving than Test certification.
   function practiceTol(t) { return { pos: t.pos * 1.5, shape: t.shape * 1.5, dir: Math.max(0, t.dir - 0.2), ramp: t.ramp }; }
 
   function updateHint() {
     const h = el('kdHint');
     if (mode === 'practice') {
       h.textContent = strokes.length < ref.length
-        ? `Kreska ${strokes.length + 1} z ${ref.length}` : 'Gotowe.';
+        ? t('kanji.stroke', strokes.length + 1, ref.length) : t('kanji.done');
     } else {
       h.textContent = strokes.length < ref.length
-        ? `Kreska ${strokes.length + 1} z ${ref.length} (z pamięci)` : '';
+        ? t('kanji.strokeMem', strokes.length + 1, ref.length) : '';
     }
   }
 
-  /* ---------- Test scoring (once, at end) ---------- */
+  /* ---------- Test scoring ---------- */
   function scoreTest() {
-    const t = TOL[DB.getTolerance()];
+    const tl = TOL[DB.getTolerance()];
     let sum = 0;
-    for (let i = 0; i < ref.length; i++) {
-      const s = scoreStroke(strokes[i].map(toGlyph), ref[i]);
-      sum += grade(s, t);
-    }
+    for (let i = 0; i < ref.length; i++) sum += grade(scoreStroke(strokes[i].map(toGlyph), ref[i]), tl);
     const coverage = sum / ref.length;
     const overshoot = Math.max(0, strokes.length - ref.length) / ref.length;
     const final = Math.max(0, Math.round((coverage - overshoot) * 100));
     const r = el('kdResult');
     if (final >= 80) {
       const n = DB.recordKanjiPass(curCh);
-      r.innerHTML = `${final}/100 — zaliczone (${n}/${DB.SILVER_TARGET})` +
-        (n >= DB.SILVER_TARGET ? ' 🥈 srebrna gwiazdka!' : '');
+      r.textContent = t('kanji.pass', final, n, DB.SILVER_TARGET) + (n >= DB.SILVER_TARGET ? t('kanji.silverStar') : '');
       r.className = 'kd-result kd-result--ok';
     } else {
-      r.textContent = `${final}/100 — poniżej 80, brak zaliczenia.`;
+      r.textContent = t('kanji.fail', final);
       r.className = 'kd-result kd-result--bad';
     }
     el('kdRetry').hidden = false;
@@ -359,50 +351,25 @@ const Kanji = (() => {
     el('kdResult').textContent = '';
     el('kdResult').className = 'kd-result';
     el('kdRetry').hidden = true;
-    drawRef(); redrawInk(); renderCheat(); updateHint();
+    drawRef(); redrawInk(); if (mode === 'practice') renderCheat(); updateHint();
   }
 
-  /* ---------- Practice cheat sheet (reading, trans, stroke order, progress) ---------- */
+  /* ---------- Practice cheat: every word using this kanji ---------- */
   function renderCheat() {
     if (mode !== 'practice') return;
-    // find a word that uses this kanji for reading/translation context
-    const w = DB.allWords().find(x => DB.kanjiOf(x.kanji).includes(curCh));
+    const words = DB.allWords().filter(x => DB.kanjiOf(x.kanji).includes(curCh));
     const prog = DB.kanjiProgress(curCh);
+    const list = words.length
+      ? words.map(w => `<div class="cheat__word">
+          <span class="cheat__wk">${esc(w.kanji)}</span>
+          <span class="cheat__wr">${esc(w.reading)}</span>
+          <span class="cheat__wt">${esc(w.translation)}</span>
+        </div>`).join('')
+      : `<span class="stub">${esc(t('kanji.noWord'))}</span>`;
     el('kdCheat').innerHTML = `
-      <div class="cheat__row">
-        ${w ? `<span class="cell-reading">${esc(w.reading)}</span>
-               <span class="cell-trans">${esc(w.translation)}</span>` :
-              `<span class="stub">brak słowa z tym kanji</span>`}
-      </div>
-      <div class="cheat__order" id="cheatOrder"></div>
-      <div class="cheat__prog">Srebrna gwiazdka: ${prog}/${DB.SILVER_TARGET}</div>`;
-    drawStrokeOrder();
-  }
-
-  // small numbered stroke-order diagram from refRaw
-  function drawStrokeOrder() {
-    const host = el('cheatOrder');
-    if (!host || !refRaw) return;
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 109 109');   // size via CSS
-    const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
-    refRaw.forEach((raw, idx) => {
-      const path = document.createElementNS(ns, 'polyline');
-      path.setAttribute('points', raw.map(p => `${p.x},${p.y}`).join(' '));
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', col);
-      path.setAttribute('stroke-width', '3');
-      path.setAttribute('stroke-linecap', 'round');
-      path.setAttribute('opacity', '0.85');
-      svg.appendChild(path);
-      const t = document.createElementNS(ns, 'text');
-      t.setAttribute('x', raw[0].x); t.setAttribute('y', raw[0].y);
-      t.setAttribute('font-size', '9'); t.setAttribute('fill', col);
-      t.textContent = idx + 1;
-      svg.appendChild(t);
-    });
-    host.innerHTML = ''; host.appendChild(svg);
+      <div class="cheat__title">${esc(t('kanji.usedIn'))}</div>
+      <div class="cheat__list">${list}</div>
+      <div class="cheat__prog">${esc(t('kanji.silverProg', prog, DB.SILVER_TARGET))}</div>`;
   }
 
   /* ---------- bind ---------- */

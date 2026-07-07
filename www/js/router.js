@@ -1,25 +1,41 @@
 /* ============================================================
    ROUTER
-   Instant navigation: toggles .view--active on section divs.
-   No page reload, state stays live in memory (spec: instant nav).
-   Views register an optional onEnter hook to (re)render.
+   Instant in-memory navigation, backed by the History API so the
+   Android hardware Back button steps back through views instead of
+   dropping out of the app. hub is the base entry (replaceState);
+   every navigation pushes one entry, so Back walks the view stack
+   and finally exits from the hub — standard app behaviour.
    ============================================================ */
 const Router = (() => {
-  const hooks = {};   // name -> fn run when the view is shown
+  const hooks = {};
+  let current = null;
 
   function register(name, onEnter) { hooks[name] = onEnter; }
 
-  function go(name) {
+  function show(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('view--active'));
     let el = document.getElementById('view-' + name);
-    if (!el) {                     // unknown route → hub, but never recurse
-      el = document.getElementById('view-hub');
-      if (!el) return;             // hub itself missing: give up, don't loop
-    }
+    if (!el) { name = 'hub'; el = document.getElementById('view-hub'); if (!el) return null; }
     el.classList.add('view--active');
     if (window.scrollTo) window.scrollTo(0, 0);
+    current = name;
     if (hooks[name]) hooks[name]();
+    return name;
   }
 
-  return { register, go };
+  function go(name, fromPop) {
+    const shown = show(name);
+    if (shown == null) return;
+    if (!fromPop) history.pushState({ view: shown }, '');
+  }
+
+  // Establish hub as the base entry and render it. Called once at boot;
+  // main.js must NOT also go('hub') or the base doubles up.
+  function init() {
+    history.replaceState({ view: 'hub' }, '');
+    window.addEventListener('popstate', e => show((e.state && e.state.view) || 'hub'));
+    show('hub');
+  }
+
+  return { register, go, init, current: () => current };
 })();

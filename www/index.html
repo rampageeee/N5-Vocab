@@ -1,15 +1,14 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#f7f5f2">
-  <title>N5 Vocab</title>
+  <title>N5</title>
   <script>
     // On-screen error surface — phones have no visible console.
-    // If any script fails to load or throws, you SEE it instead of a dead button.
-    window.addEventListener('error', function (e) {
-      var b = document.getElementById('errbar') || (function () {
+    function errbar() {
+      return document.getElementById('errbar') || (function () {
         var d = document.createElement('div');
         d.id = 'errbar';
         d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;'
@@ -18,78 +17,102 @@
         (document.body || document.documentElement).appendChild(d);
         return d;
       })();
+    }
+    window.addEventListener('error', function (e) {
       var where = e.filename ? e.filename.split('/').pop() : '?';
-      b.textContent += '⚠ ' + (e.message || 'load error') + '  [' + where
+      errbar().textContent += '\u26A0 ' + (e.message || 'load error') + '  [' + where
         + (e.lineno ? ':' + e.lineno : '') + ']\n';
     }, true);
+    // init() is async now — a boot failure is a rejected promise, not an error event.
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      errbar().textContent += '\u26A0 ' + ((r && r.message) || r || 'promise rejection') + '\n';
+    });
   </script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body data-theme="light">
 
-  <!-- Top bar: persists across all views -->
+  <!-- Top bar -->
   <header class="topbar">
-    <button class="topbar__home" id="btnHome" aria-label="Główna">
+    <button class="topbar__home" id="btnHome" data-i18n-aria="topbar.home" aria-label="Home">
       <span class="topbar__title">N5</span>
     </button>
     <div class="topbar__right">
-      <span class="export-status" id="exportStatus"></span>
-      <button class="icon-btn" id="btnSettings" aria-label="Ustawienia">⚙</button>
+      <button class="icon-btn" id="btnSettings" data-i18n-aria="topbar.settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h9M17 7h3"/><circle cx="15" cy="7" r="2.1"/>
+          <path d="M4 12h3M11 12h9"/><circle cx="9" cy="12" r="2.1"/>
+          <path d="M4 17h9M17 17h3"/><circle cx="15" cy="17" r="2.1"/>
+        </svg>
+      </button>
     </div>
   </header>
 
   <main id="app">
 
-    <!-- ============ HUB (default view) ============ -->
+    <!-- ============ HUB ============ -->
     <section class="view view--active" id="view-hub">
       <nav class="hub">
         <button class="hub__tile" data-goto="vocabulary">
-          <span class="hub__jp">単語</span>
-          <span class="hub__label">Słownictwo</span>
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 0 4 21.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 1 1.5 1.5z"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.vocab">Dictionary</span>
         </button>
         <button class="hub__tile" data-goto="flashcards">
-          <span class="hub__jp">カード</span>
-          <span class="hub__label">Fiszki</span>
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="13" rx="2"/><path d="M8 7V6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.flash">Flashcards</span>
         </button>
         <button class="hub__tile" data-goto="kanji">
-          <span class="hub__jp">書き</span>
-          <span class="hub__label">Pisanie kanji</span>
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3-.8 9.4-9.4a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L4.8 15z"/><path d="M13.5 6.5l4 4"/><path d="M5 19l.8-3"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.kanji">Kanji writing</span>
         </button>
         <button class="hub__tile" data-goto="sentences">
-          <span class="hub__jp">文</span>
-          <span class="hub__label">Zdania</span>
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 4v-4a2 2 0 0 1-1-2z"/><path d="M8 8h8M8 11h5"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.sentences">Sentences</span>
+        </button>
+        <button class="hub__tile" data-goto="grammar">
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M5 10h14M5 14h9M5 18h9"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.grammar">Grammar</span>
+        </button>
+        <button class="hub__tile" data-goto="kana">
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.kana">Kana</span>
         </button>
       </nav>
-
     </section>
 
     <!-- ============ VOCABULARY ============ -->
     <section class="view" id="view-vocabulary">
-      <div class="view__head">
-        <h1 class="view__title">Słownictwo</h1>
-      </div>
+      <div class="view__head"><h1 class="view__title" data-i18n="vocab.title">Dictionary</h1></div>
 
-      <!-- add category -->
       <form class="addcat" id="formAddCat">
-        <input type="text" id="inpNewCat" placeholder="Nowa kategoria (kanji)…" autocomplete="off">
-        <button type="submit" class="tool-btn">+ Kategoria</button>
+        <input type="text" id="inpNewCat" data-i18n-ph="vocab.newCat.ph" placeholder="New category…" autocomplete="off">
+        <button type="submit" class="tool-btn" data-i18n="vocab.addCat">+ Category</button>
       </form>
 
-      <!-- table of contents -->
       <nav class="toc" id="toc"></nav>
-
-      <!-- categories render here -->
       <div id="vocabBody"></div>
     </section>
 
-    <!-- ============ STUBS (built in later passes) ============ -->
+    <!-- ============ FLASHCARDS ============ -->
     <section class="view" id="view-flashcards">
-      <div class="view__head"><h1 class="view__title">Fiszki</h1></div>
+      <div class="view__head"><h1 class="view__title" data-i18n="flash.title">Flashcards</h1></div>
 
-      <!-- setup: pick category -->
+      <!-- setup: pick category (auto-starts on choice) -->
       <div class="fc-setup" id="fcSetup">
         <select id="fcCategory"></select>
-        <button class="tool-btn" id="fcStart">Start</button>
       </div>
 
       <!-- active session -->
@@ -100,7 +123,7 @@
           <div class="flashcard__inner">
             <div class="flashcard__face flashcard__face--front">
               <div class="fc-front-trans" id="fcTrans"></div>
-              <div class="fc-hint">dotknij, aby odwrócić</div>
+              <div class="fc-hint" data-i18n="flash.flip">tap to flip</div>
             </div>
             <div class="flashcard__face flashcard__face--back">
               <div class="fc-back-kanji" id="fcKanji"></div>
@@ -110,35 +133,38 @@
         </div>
 
         <div class="fc-answer">
-          <input type="text" id="fcInput" placeholder="wpisz czytanie (kana)…" autocomplete="off" autocapitalize="off">
-          <button class="tool-btn" id="fcSubmit">Sprawdź</button>
+          <input type="text" id="fcInput" data-i18n-ph="flash.input.ph" placeholder="type the reading (kana)…" autocomplete="off" autocapitalize="off">
+          <button class="tool-btn" id="fcAction" data-mode="check">Check</button>
         </div>
         <div class="fc-feedback" id="fcFeedback"></div>
-        <div class="fc-next" id="fcNextWrap" hidden>
-          <button class="tool-btn" id="fcNext">Następna →</button>
+
+        <!-- inline end-of-cycle restart prompt -->
+        <div class="fc-restart" id="fcRestart" hidden>
+          <div class="fc-restart__msg" id="fcRestartMsg"></div>
+          <div class="fc-restart__btns">
+            <button class="tool-btn" id="fcAgain">Again</button>
+            <button class="tool-btn tool-btn--ghost" id="fcBack">Back</button>
+          </div>
         </div>
-        <button class="tool-btn tool-btn--ghost" id="fcEnd">Zakończ sesję</button>
       </div>
 
-      <!-- progress list -->
       <div class="fc-list" id="fcList"></div>
     </section>
 
+    <!-- ============ KANJI ============ -->
     <section class="view" id="view-kanji">
-      <!-- grid -->
       <div id="kanjiGridView">
-        <div class="view__head"><h1 class="view__title">Pisanie kanji</h1></div>
+        <div class="view__head"><h1 class="view__title" data-i18n="kanji.title">Kanji writing</h1></div>
         <div class="kgrid" id="kanjiGrid"></div>
       </div>
 
-      <!-- drawing -->
       <div id="kanjiDraw" hidden>
         <div class="kd-top">
-          <button class="tool-btn tool-btn--ghost" id="kdBack">← Siatka</button>
+          <button class="tool-btn tool-btn--ghost" id="kdBack" data-i18n="kanji.back">← Grid</button>
           <span class="kd-prompt" id="kdPrompt"></span>
           <div class="seg">
-            <button class="seg__btn seg--on" id="kdPractice">Ćwiczenie</button>
-            <button class="seg__btn" id="kdTest">Test</button>
+            <button class="seg__btn seg--on" id="kdPractice" data-i18n="kanji.practice">Practice</button>
+            <button class="seg__btn" id="kdTest" data-i18n="kanji.test">Test</button>
           </div>
         </div>
 
@@ -152,8 +178,8 @@
             <div class="kd-hint" id="kdHint"></div>
             <div class="kd-result" id="kdResult"></div>
             <div class="kd-controls">
-              <button class="tool-btn tool-btn--ghost" id="kdClear">Wyczyść</button>
-              <button class="tool-btn" id="kdRetry" hidden>Jeszcze raz</button>
+              <button class="tool-btn tool-btn--ghost" id="kdClear" data-i18n="kanji.clear">Clear</button>
+              <button class="tool-btn" id="kdRetry" data-i18n="kanji.retry" hidden>Retry</button>
             </div>
           </div>
           <div class="kd-cheat" id="kdCheat"></div>
@@ -161,57 +187,88 @@
       </div>
     </section>
 
+    <!-- ============ STUBS ============ -->
     <section class="view" id="view-sentences">
-      <div class="view__head"><h1 class="view__title">Zdania</h1></div>
-      <p class="stub">Ta sekcja zostanie zbudowana w następnym kroku.</p>
+      <div class="view__head"><h1 class="view__title" data-i18n="hub.sentences">Sentences</h1></div>
+      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
+    </section>
+
+    <section class="view" id="view-grammar">
+      <div class="view__head"><h1 class="view__title" data-i18n="hub.grammar">Grammar</h1></div>
+      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
+    </section>
+
+    <section class="view" id="view-kana">
+      <div class="view__head"><h1 class="view__title" data-i18n="hub.kana">Kana</h1></div>
+      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
     </section>
 
     <!-- ============ SETTINGS ============ -->
     <section class="view" id="view-settings">
-      <div class="view__head"><h1 class="view__title">Ustawienia</h1></div>
+      <div class="view__head"><h1 class="view__title" data-i18n="settings.title">Settings</h1></div>
 
       <div class="settings-group">
-        <h2>Wygląd</h2>
+        <h2 data-i18n="settings.appearance">Appearance</h2>
         <div class="setting-row">
-          <span>Tryb ciemny</span>
+          <span data-i18n="settings.dark">Dark mode</span>
           <label class="switch">
             <input type="checkbox" id="setDark">
             <span class="switch__track"></span>
           </label>
         </div>
-      </div>
-
-      <div class="settings-group">
-        <h2>Paleta kolorów</h2>
-        <div class="palette-grid" id="paletteGrid"></div>
-      </div>
-
-      <div class="settings-group">
-        <h2>Pisanie kanji</h2>
         <div class="setting-row">
-          <span>Tolerancja oceny</span>
-          <select id="setTolerance">
-            <option value="lenient">łagodna</option>
-            <option value="normal">normalna</option>
-            <option value="strict">surowa</option>
+          <span data-i18n="settings.language">Language</span>
+          <select id="setLang">
+            <option value="en">English</option>
+            <option value="pl">Polski</option>
           </select>
         </div>
       </div>
 
       <div class="settings-group">
-        <h2>Kategorie</h2>
+        <h2 data-i18n="settings.palette">Colour palette</h2>
+        <div class="palette-grid" id="paletteGrid"></div>
+      </div>
+
+      <div class="settings-group">
+        <h2 data-i18n="settings.kanji">Kanji writing</h2>
+        <div class="setting-row">
+          <span data-i18n="settings.tolerance">Grading tolerance</span>
+          <select id="setTolerance">
+            <option value="lenient" data-i18n="tol.lenient">lenient</option>
+            <option value="normal" data-i18n="tol.normal">normal</option>
+            <option value="strict" data-i18n="tol.strict">strict</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2 data-i18n="settings.stats">Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-card"><span class="stat-card__num" id="statCats">0</span><span class="stat-card__lbl" data-i18n="stats.categories">Categories</span></div>
+          <div class="stat-card"><span class="stat-card__num" id="statWords">0</span><span class="stat-card__lbl" data-i18n="stats.words">Words</span></div>
+          <div class="stat-card"><span class="stat-card__num" id="statMastered">0</span><span class="stat-card__lbl" data-i18n="stats.mastered">Words with all 3 stars</span></div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h2 data-i18n="settings.categories">Categories</h2>
         <div class="cat-manage" id="catManage"></div>
       </div>
 
       <div class="settings-group">
-        <h2>Kopia zapasowa</h2>
+        <h2 data-i18n="settings.backup">Backup</h2>
         <div class="setting-row">
-          <span>Eksportuj wszystkie dane</span>
-          <button class="tool-btn" id="btnExport">Eksport</button>
+          <span data-i18n="settings.lastBackup">Last backup</span>
+          <span class="backup-status" id="setBackupStatus"></span>
         </div>
         <div class="setting-row">
-          <span>Importuj z pliku</span>
-          <button class="tool-btn tool-btn--ghost" id="btnImport">Import</button>
+          <span data-i18n="settings.export">Export all data</span>
+          <button class="tool-btn" id="btnExport" data-i18n="settings.exportBtn">Export</button>
+        </div>
+        <div class="setting-row">
+          <span data-i18n="settings.import">Import from file</span>
+          <button class="tool-btn tool-btn--ghost" id="btnImport" data-i18n="settings.importBtn">Import</button>
           <input type="file" id="fileImport" accept="application/json" hidden>
         </div>
       </div>
@@ -222,42 +279,45 @@
   <!-- ============ MODAL: add/edit word ============ -->
   <div class="modal" id="modalWord" hidden>
     <div class="modal__box">
-      <h2 class="modal__title" id="modalWordTitle">Nowe słowo</h2>
+      <h2 class="modal__title" id="modalWordTitle">New word</h2>
       <form id="formWord">
         <label class="fld">
-          <span class="fld__lbl">Kanji</span>
+          <span class="fld__lbl" data-i18n="word.kanji">Kanji</span>
           <input type="text" id="wKanji" autocomplete="off">
         </label>
         <label class="fld">
-          <span class="fld__lbl">Hiragana / Katakana</span>
+          <span class="fld__lbl" data-i18n="word.reading">Hiragana / Katakana</span>
           <input type="text" id="wReading" autocomplete="off">
         </label>
         <label class="fld">
-          <span class="fld__lbl">Tłumaczenie (PL)</span>
+          <span class="fld__lbl" data-i18n="word.trans">Translation</span>
           <input type="text" id="wTrans" autocomplete="off">
         </label>
         <label class="fld">
-          <span class="fld__lbl">Część mowy <em>(opcjonalnie)</em></span>
+          <span class="fld__lbl" data-i18n="word.pos">Part of speech</span>
           <select id="wPos">
-            <option value="">— (brak, słowo nie trafi do „Zdań")</option>
-            <option value="noun">rzeczownik</option>
-            <option value="verb">czasownik</option>
-            <option value="i-adj">przymiotnik -i</option>
-            <option value="na-adj">przymiotnik -na</option>
-            <option value="adverb">przysłówek</option>
-            <option value="counter">liczebnik / licznik</option>
-            <option value="particle">partykuła</option>
-            <option value="expression">wyrażenie</option>
+            <option value="" data-i18n="pos.none">— none</option>
+            <option value="noun" data-i18n="pos.noun">noun</option>
+            <option value="verb" data-i18n="pos.verb">verb</option>
+            <option value="i-adj" data-i18n="pos.iadj">i-adjective</option>
+            <option value="na-adj" data-i18n="pos.naadj">na-adjective</option>
+            <option value="adverb" data-i18n="pos.adverb">adverb</option>
+            <option value="counter" data-i18n="pos.counter">counter</option>
+            <option value="particle" data-i18n="pos.particle">particle</option>
+            <option value="expression" data-i18n="pos.expression">expression</option>
           </select>
         </label>
-        <input type="hidden" id="wCategory">
+        <label class="fld">
+          <span class="fld__lbl" data-i18n="word.category">Category</span>
+          <select id="wCategory"></select>
+        </label>
         <input type="hidden" id="wId">
 
         <div class="modal__actions">
-          <button type="button" class="tool-btn tool-btn--danger" id="btnDeleteWord" hidden>Usuń</button>
+          <button type="button" class="tool-btn tool-btn--danger" id="btnDeleteWord" data-i18n="word.delete" hidden>Delete</button>
           <div class="modal__actions-right">
-            <button type="button" class="tool-btn tool-btn--ghost" id="btnCancelWord">Anuluj</button>
-            <button type="submit" class="tool-btn">Zapisz</button>
+            <button type="button" class="tool-btn tool-btn--ghost" id="btnCancelWord" data-i18n="word.cancel">Cancel</button>
+            <button type="submit" class="tool-btn" data-i18n="word.save">Save</button>
           </div>
         </div>
       </form>
@@ -267,12 +327,13 @@
   <!-- ============ MODAL: word detail ============ -->
   <div class="modal" id="modalDetail" hidden>
     <div class="modal__box modal__box--detail">
-      <button class="modal__close" id="btnCloseDetail" aria-label="Zamknij">×</button>
+      <button class="modal__close" id="btnCloseDetail" aria-label="×">×</button>
       <div class="detail" id="detailBody"></div>
     </div>
   </div>
 
   <script src="js/data.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/router.js"></script>
   <script src="js/vocabulary.js"></script>
   <script src="js/flashcards.js"></script>

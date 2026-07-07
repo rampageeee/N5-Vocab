@@ -1,7 +1,10 @@
 /* ============================================================
    THEME TOKENS
-   Light is default. Dark keeps the kanji/reading/translation
-   colour LOGIC but lifts each hue for legibility on dark ground.
+   Light is default. The three semantic hues (--kanji/--reading/
+   --trans) are FALLBACKS only — Settings.applyAppearance() injects
+   the active palette's triad as inline custom properties at runtime
+   (single source of truth in settings.js). The old [data-palette]
+   CSS blocks are gone; colour no longer lives in two places.
    ============================================================ */
 :root,
 [data-theme="light"] {
@@ -12,9 +15,9 @@
   --text:      #2a2622;
   --text-dim:  #7a736a;
 
-  --kanji:     #9b1c1c;  /* dark red   */
-  --reading:   #7a4a1e;  /* brown      */
-  --trans:     #1d4ed8;  /* blue       */
+  --kanji:     #a8243a;
+  --reading:   #4d7057;
+  --trans:     #b0316f;
 
   --accent:    #2a2622;
   --danger:    #b02a2a;
@@ -35,9 +38,9 @@
   --text:      #e9e6e0;
   --text-dim:  #9c968d;
 
-  --kanji:     #f0736f;  /* lighter red */
-  --reading:   #d6a878;  /* tan/brown   */
-  --trans:     #7aa2f7;  /* lighter blue*/
+  --kanji:     #e1515e;
+  --reading:   #8ba792;
+  --trans:     #e05293;
 
   --accent:    #e9e6e0;
   --danger:    #e06666;
@@ -50,49 +53,12 @@
   --shadow: 0 2px 10px rgba(0,0,0,.4);
 }
 
-/* ============================================================
-   PALETTES  (independent axis: data-palette on <body>)
-   Theme owns bg/surface/border/stars. Palette overrides ONLY the
-   three semantic text hues. Each palette defines a light + dark
-   variant so switching theme re-tunes the triad, never reuses a
-   light hue on dark ground (spec §7 legibility clause).
-
-   Every triad guarantees three-way separation (kanji≠reading≠trans,
-   not just each≠bg) and avoids collision with bronze/silver/gold.
-   ============================================================ */
-
-/* Five seasonal palettes. Roles per user rule: kanji = boldest/most-red
-   of the source triad, reading (hiragana) = most neutral, trans = remaining.
-   Light + dark variants derived by normalising lightness for ≥4.5:1 contrast
-   on each ground while holding hue. Where the source triad shares a hue
-   (summer's reds, spring's greens), trans is hue-nudged for separation;
-   fall's reading=trans are intentionally identical (source duplicate). */
-
-/* 1 — Summer */
-[data-palette="summer"][data-theme="light"] { --kanji:#601118; --reading:#304034; --trans:#5f1132; }
-[data-palette="summer"][data-theme="dark"]  { --kanji:#e1515e; --reading:#8ba792; --trans:#e05293; }
-
-/* 2 — Winter */
-[data-palette="winter"][data-theme="light"] { --kanji:#1a3956; --reading:#313a3f; --trans:#5c4114; }
-[data-palette="winter"][data-theme="dark"]  { --kanji:#639bcf; --reading:#8d9da5; --trans:#dba957; }
-
-/* 3 — Fall */
-[data-palette="fall"][data-theme="light"] { --kanji:#2e2749; --reading:#494627; --trans:#494627; }
-[data-palette="fall"][data-theme="dark"]  { --kanji:#867ab8; --reading:#b8b17a; --trans:#b8b17a; }
-
-/* 4 — Spring */
-[data-palette="spring"][data-theme="light"] { --kanji:#403035; --reading:#313f33; --trans:#30403c; }
-[data-palette="spring"][data-theme="dark"]  { --kanji:#a88a94; --reading:#8da58f; --trans:#8aa8a1; }
-
-/* 5 — Geisha */
-[data-palette="geisha"][data-theme="light"] { --kanji:#601010; --reading:#303040; --trans:#4a2e27; }
-[data-palette="geisha"][data-theme="dark"]  { --kanji:#e25050; --reading:#8a8aa8; --trans:#b98779; }
-
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html {
-  background: var(--bg);   /* html always fills the viewport; paints below content */
+  background: var(--bg);
   min-height: 100%;
+  overflow-x: hidden;               /* belt-and-suspenders: never scroll sideways */
 }
 body {
   margin: 0;
@@ -100,123 +66,152 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, "Segoe UI", "Noto Sans JP", sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.45;
+  overflow-x: hidden;
 }
 
-/* Japanese text wants a font that has kanji; browsers fall back,
-   but hint stacks per role. */
 .jp { font-family: "Noto Sans JP", "Yu Gothic", "Hiragino Sans", system-ui, sans-serif; }
 
 /* ============================================================ TOPBAR */
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
-  padding: .55rem .9rem;
+  padding: .5rem .8rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .topbar__home {
   background: none; border: none; color: var(--text);
-  font-size: 1.25rem; font-weight: 700; cursor: pointer; padding: .2rem .4rem;
+  font-size: 1.2rem; font-weight: 700; cursor: pointer; padding: .2rem .4rem;
 }
 .topbar__title { letter-spacing: .05em; }
 .topbar__right { display: flex; align-items: center; gap: .6rem; }
-.export-status { font-size: .72rem; color: var(--text-dim); }
-.export-status--warn { color: var(--danger); font-weight: 600; }
 .icon-btn {
   background: none; border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; width: 40px; height: 40px; font-size: 1.1rem; cursor: pointer;
+  border-radius: 8px; width: 38px; height: 38px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.icon-btn svg { width: 20px; height: 20px; }
 
 /* ============================================================ VIEWS */
-.view { display: none; padding: 1rem; max-width: 780px; margin: 0 auto; }
+.view { display: none; padding: .85rem; max-width: 780px; margin: 0 auto; }
 .view--active { display: block; }
 .view__head { margin-bottom: 1rem; }
-.view__title { font-size: 1.4rem; margin: 0; }
+.view__title { font-size: 1.35rem; margin: 0; }
 .stub { color: var(--text-dim); }
 
 /* ============================================================ HUB */
 .hub {
-  display: grid; grid-template-columns: 1fr 1fr; gap: .9rem;
-  margin-bottom: 1.5rem;
+  display: grid; grid-template-columns: 1fr 1fr; gap: .8rem;
+  margin-bottom: 1.4rem;
 }
 .hub__tile {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .35rem; padding: 1.6rem 1rem; min-height: 130px;
+  gap: .5rem; padding: 1.3rem .8rem; min-height: 118px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   color: var(--text); cursor: pointer; box-shadow: var(--shadow);
   transition: transform .08s ease;
 }
 .hub__tile:active { transform: scale(.97); }
-.hub__jp { font-size: 2rem; font-weight: 700; }
-.hub__label { font-size: .85rem; color: var(--text-dim); }
-.hub__tools { display: flex; gap: .6rem; flex-wrap: wrap; }
+.hub__icon { color: var(--text); display: inline-flex; }
+.hub__icon svg { width: 34px; height: 34px; }
+.hub__label { font-size: .82rem; color: var(--text-dim); text-align: center; }
 
 /* ============================================================ BUTTONS */
 .tool-btn {
   background: var(--accent); color: var(--bg);
-  border: none; border-radius: 10px; padding: .6rem 1rem;
+  border: none; border-radius: 10px; padding: .55rem .95rem;
   font-size: .9rem; cursor: pointer;
 }
 .tool-btn--ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
 .tool-btn--danger { background: var(--danger); color: #fff; }
 
 /* ============================================================ ADD CATEGORY */
-.addcat { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+.addcat { display: flex; gap: .5rem; margin-bottom: 1.1rem; }
 .addcat input {
-  flex: 1; padding: .6rem .7rem; font-size: 1rem;
+  flex: 1; min-width: 0; padding: .55rem .7rem; font-size: 1rem;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
 }
 
 /* ============================================================ TOC */
-.toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+.toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.3rem; }
 .toc a {
   font-family: "Noto Sans JP", system-ui, sans-serif;
   color: var(--kanji); text-decoration: none;
   background: var(--surface-2); border: 1px solid var(--border);
-  padding: .35rem .7rem; border-radius: 999px; font-size: 1rem;
+  padding: .3rem .65rem; border-radius: 999px; font-size: .95rem;
+  overflow-wrap: anywhere;
 }
 .toc:empty { display: none; }
 
 /* ============================================================ CATEGORY BLOCKS */
-.cat { margin-bottom: 2.5rem; scroll-margin-top: 60px; }
+.cat { margin-bottom: 2rem; scroll-margin-top: 56px; }
 .cat__head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  margin-bottom: .5rem;
+  display: flex; align-items: center; gap: .3rem; margin-bottom: .5rem;
+}
+.cat__grip {
+  background: none; border: none; color: var(--text-dim); cursor: grab;
+  padding: .2rem .3rem; touch-action: none; flex: none;
 }
 .cat__name {
+  flex: 1; min-width: 0;
   font-family: "Noto Sans JP", system-ui, sans-serif;
-  font-size: 1.3rem; font-weight: 700; color: var(--kanji);
+  font-size: 1.2rem; font-weight: 700; color: var(--kanji);
+  overflow-wrap: anywhere;
 }
-.cat__empty { color: var(--text-dim); font-size: .85rem; padding: .5rem 0; }
-
-.vtable { width: 100%; border-collapse: collapse; }
-.vtable th {
-  text-align: left; font-size: .72rem; text-transform: uppercase;
-  letter-spacing: .04em; color: var(--text-dim); font-weight: 600;
-  padding: .3rem .4rem; border-bottom: 1px solid var(--border);
+.cat__name-input {
+  flex: 1; min-width: 0; font-size: 1.1rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  color: var(--kanji); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: .3rem .5rem;
 }
-.vtable td {
-  padding: .55rem .4rem; border-bottom: 1px solid var(--border);
-  vertical-align: middle;
+.cat__edit {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 1rem; cursor: pointer; padding: .2rem .4rem; flex: none;
 }
-.vtable tr:last-child td { border-bottom: none; }
+.cat__empty { color: var(--text-dim); font-size: .85rem; padding: .5rem .2rem; }
 
-.col-stars { width: 1%; white-space: nowrap; }
-.col-edit  { width: 1%; text-align: right; }
+/* word rows — GRID, not a table, so long content wraps down instead of
+   pushing the page sideways, and rows can be drag-reordered on touch */
+.wlist { display: flex; flex-direction: column; }
+.wrow {
+  display: grid;
+  grid-template-columns: 22px 1fr 30px;
+  gap: .4rem; align-items: center;
+  padding: .5rem 0; border-bottom: 1px solid var(--border);
+}
+.wrow.sorting {
+  background: var(--surface-2); border-radius: 10px;
+  box-shadow: var(--shadow); transform: scale(1.01); border-bottom-color: transparent;
+}
+.wrow__grip {
+  background: none; border: none; color: var(--text-dim); cursor: grab;
+  padding: .3rem 0; touch-action: none; align-self: start; margin-top: .1rem;
+}
+.grip { font-size: 1rem; line-height: 1; }
+.wrow__main { min-width: 0; cursor: pointer; }
+.wrow__top { display: flex; align-items: baseline; gap: .5rem; }
+.wrow__kanji {
+  flex: 1; min-width: 0;
+  color: var(--kanji); font-weight: 600; font-size: 1.1rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif; overflow-wrap: anywhere;
+}
+.wrow__reading {
+  color: var(--reading); font-size: .95rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif; overflow-wrap: anywhere;
+}
+.wrow__trans { color: var(--trans); font-size: .95rem; overflow-wrap: anywhere; }
+.wrow__edit {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 1.05rem; cursor: pointer; padding: .2rem .3rem;
+  align-self: start; margin-top: .1rem;
+}
 
-.cell-kanji   { color: var(--kanji);   font-weight: 600; font-size: 1.15rem;
-                font-family: "Noto Sans JP", system-ui, sans-serif; cursor: pointer; }
-.cell-reading { color: var(--reading); font-family: "Noto Sans JP", system-ui, sans-serif; }
-.cell-trans   { color: var(--trans); }
-
-.stars { display: inline-flex; gap: 1px; }
-.star  { font-size: .95rem; line-height: 1; filter: grayscale(1); opacity: .4; }
+.stars { display: inline-flex; gap: 1px; flex: none; }
+.star  { font-size: .9rem; line-height: 1; filter: grayscale(1); opacity: .4; }
 .star--on { filter: none; opacity: 1; }
-/* colour tint for the "on" state via text shadow trick isn't reliable on emoji;
-   we swap to filled unicode + colour instead */
 .star.b { color: var(--star-off); }
 .star.s { color: var(--star-off); }
 .star.g { color: var(--star-off); }
@@ -224,16 +219,10 @@ body {
 .star.s.star--on { color: var(--silver); }
 .star.g.star--on { color: var(--gold); }
 
-.edit-btn {
-  background: none; border: none; color: var(--text-dim);
-  font-size: 1.1rem; cursor: pointer; padding: .2rem .3rem;
-}
-
-.addword-row td { text-align: center; padding: .4rem; }
 .addword-btn {
   background: var(--surface-2); border: 1px dashed var(--border);
-  color: var(--text-dim); border-radius: 8px; padding: .4rem .9rem;
-  cursor: pointer; font-size: .9rem; width: 100%;
+  color: var(--text-dim); border-radius: 8px; padding: .45rem .9rem;
+  cursor: pointer; font-size: .9rem; width: 100%; margin-top: .5rem;
 }
 
 /* ============================================================ MODALS */
@@ -244,12 +233,12 @@ body {
 }
 .modal[hidden] { display: none; }
 .modal__box {
-  background: var(--surface); border-radius: 16px; padding: 1.2rem;
+  background: var(--surface); border-radius: 16px; padding: 1.1rem;
   width: 100%; max-width: 420px; box-shadow: var(--shadow);
   max-height: 90vh; overflow-y: auto;
 }
 .modal__box--detail { max-width: 480px; position: relative; text-align: center; }
-.modal__title { margin: 0 0 1rem; font-size: 1.2rem; }
+.modal__title { margin: 0 0 1rem; font-size: 1.15rem; }
 .modal__close {
   position: absolute; top: .5rem; right: .7rem;
   background: none; border: none; font-size: 1.8rem; line-height: 1;
@@ -262,7 +251,6 @@ body {
 
 .fld { display: block; margin-bottom: .8rem; }
 .fld__lbl { display: block; font-size: .8rem; color: var(--text-dim); margin-bottom: .25rem; }
-.fld__lbl em { font-style: normal; opacity: .7; }
 .fld input, .fld select {
   width: 100%; padding: .55rem .6rem; font-size: 1rem;
   background: var(--bg); color: var(--text);
@@ -272,21 +260,17 @@ body {
 /* ============================================================ DETAIL VIEW */
 .detail__kanji {
   font-family: "Noto Sans JP", system-ui, sans-serif;
-  font-size: 5rem; color: var(--kanji); line-height: 1; margin: .5rem 0;
+  font-size: 4.4rem; color: var(--kanji); line-height: 1; margin: .5rem 0;
+  overflow-wrap: anywhere;
 }
-.detail__reading { color: var(--reading); font-size: 1.4rem; }
-.detail__trans   { color: var(--trans); font-size: 1.2rem; margin-bottom: 1rem; }
-.detail__stroke-note {
-  font-size: .8rem; color: var(--text-dim);
-  background: var(--surface-2); border: 1px dashed var(--border);
-  border-radius: 8px; padding: .7rem; margin: 1rem 0;
-}
+.detail__reading { color: var(--reading); font-size: 1.35rem; overflow-wrap: anywhere; }
+.detail__trans   { color: var(--trans); font-size: 1.15rem; margin-bottom: 1rem; overflow-wrap: anywhere; }
 .detail__chars { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin: 1rem 0; }
 .detail__char {
   font-family: "Noto Sans JP", system-ui, sans-serif;
   font-size: 2rem; color: var(--kanji);
   border: 1px solid var(--border); border-radius: 10px;
-  width: 64px; height: 64px; display: flex; align-items: center; justify-content: center;
+  width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;
 }
 .detail__draw-link { margin-top: .5rem; }
 
@@ -299,11 +283,10 @@ body {
 }
 .fc-progress-num { font-size: .8rem; color: var(--text-dim); margin: .5rem 0; text-align: center; }
 
-.fc-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.fc-stage { display: flex; flex-direction: column; align-items: center; gap: .9rem; }
 
-/* the 3D card */
 .flashcard {
-  width: 100%; max-width: 320px; aspect-ratio: 4 / 3;
+  width: 100%; max-width: 300px; aspect-ratio: 4 / 3;
   perspective: 1000px; cursor: pointer;
 }
 .flashcard__inner {
@@ -319,31 +302,41 @@ body {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 18px; box-shadow: var(--shadow);
   backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  overflow: hidden;
 }
 .flashcard__face--back { transform: rotateY(180deg); }
-.fc-front-trans { color: var(--trans); font-size: 1.5rem; }
+.fc-front-trans { color: var(--trans); font-size: 1.4rem; overflow-wrap: anywhere; }
 .fc-hint { position: absolute; bottom: .6rem; font-size: .7rem; color: var(--text-dim); }
 .fc-back-kanji {
   font-family: "Noto Sans JP", system-ui, sans-serif;
-  color: var(--kanji); font-size: 2.6rem;
+  color: var(--kanji); font-size: 2.4rem; overflow-wrap: anywhere;
 }
-.fc-back-reading { color: var(--reading); font-size: 1.3rem;
-  font-family: "Noto Sans JP", system-ui, sans-serif; }
+.fc-back-reading { color: var(--reading); font-size: 1.25rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif; overflow-wrap: anywhere; }
 
 .fc-answer { display: flex; gap: .5rem; width: 100%; max-width: 320px; }
 .fc-answer input {
-  flex: 1; padding: .6rem .7rem; font-size: 1.05rem;
+  flex: 1; min-width: 0; padding: .6rem .7rem; font-size: 1.05rem;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
 }
+.fc-answer .tool-btn { flex: none; }
 .fc-feedback { min-height: 1.4rem; font-size: .95rem; text-align: center; }
 .fc-feedback--ok   { color: #2f8f4e; }
 .fc-feedback--bad  { color: var(--danger); }
 .fc-feedback--dim  { color: var(--text-dim); }
-.fc-next { display: flex; gap: .5rem; }
 
-/* progress list below */
-.fc-list { margin-top: 2rem; }
+/* inline restart prompt (styled like the feedback line, sits under the card) */
+.fc-restart {
+  display: flex; flex-direction: column; align-items: center; gap: .6rem;
+  padding: .8rem 1rem; width: 100%; max-width: 320px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+}
+.fc-restart__msg { color: var(--text); font-size: .95rem; text-align: center; }
+.fc-restart__btns { display: flex; gap: .5rem; }
+
+/* progress list */
+.fc-list { margin-top: 1.6rem; }
 .fc-list__toggle {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
   background: var(--surface-2); color: var(--text);
@@ -355,15 +348,21 @@ body {
 .fc-list__filter { margin-bottom: .6rem; }
 .fc-list__filter select {
   padding: .4rem .6rem; background: var(--surface); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: 8px; max-width: 100%;
 }
-.fc-list table { width: 100%; border-collapse: collapse; }
-.fc-list td, .fc-list th { padding: .4rem; border-bottom: 1px solid var(--border); font-size: .9rem; }
+.fc-list table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.fc-list td, .fc-list th {
+  padding: .4rem; border-bottom: 1px solid var(--border); font-size: .9rem;
+  overflow-wrap: anywhere; vertical-align: top;
+}
 .fc-list th { text-align: left; color: var(--text-dim); font-size: .72rem; text-transform: uppercase; }
-.fc-pts { text-align: right; font-variant-numeric: tabular-nums; }
+.fc-list .cell-kanji   { color: var(--kanji); font-family: "Noto Sans JP", system-ui, sans-serif; }
+.fc-list .cell-reading { color: var(--reading); font-family: "Noto Sans JP", system-ui, sans-serif; }
+.fc-list .cell-trans   { color: var(--trans); }
+.fc-pts { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; width: 4.5rem; }
 
 /* ============================================================ SETTINGS */
-.settings-group { margin-bottom: 2rem; }
+.settings-group { margin-bottom: 1.8rem; }
 .settings-group h2 { font-size: 1rem; margin: 0 0 .6rem; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: .04em; }
 .setting-row {
@@ -371,6 +370,21 @@ body {
   padding: .6rem 0; border-bottom: 1px solid var(--border); gap: 1rem;
 }
 .setting-row:last-child { border-bottom: none; }
+.setting-row select {
+  padding: .45rem .6rem; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.backup-status { color: var(--text-dim); font-size: .9rem; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; }
+.stat-card {
+  display: flex; flex-direction: column; align-items: center; gap: .2rem;
+  padding: .9rem .4rem; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 12px; text-align: center;
+}
+.stat-card__num { font-size: 1.6rem; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.stat-card__lbl { font-size: .72rem; color: var(--text-dim); }
 
 .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
 .palette-card {
@@ -384,14 +398,15 @@ body {
 
 .cat-manage { display: flex; flex-direction: column; gap: .4rem; }
 .cat-manage__row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
   padding: .5rem .7rem; background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 8px;
 }
-.cat-manage__name { font-family: "Noto Sans JP", system-ui, sans-serif; color: var(--kanji); }
+.cat-manage__name { font-family: "Noto Sans JP", system-ui, sans-serif; color: var(--kanji);
+  overflow-wrap: anywhere; min-width: 0; }
 .cat-manage__del {
   background: none; border: none; color: var(--danger);
-  font-size: 1.1rem; cursor: pointer; padding: .2rem .4rem;
+  font-size: 1.1rem; cursor: pointer; padding: .2rem .4rem; flex: none;
 }
 
 /* toggle switch */
@@ -409,22 +424,22 @@ body {
 
 /* ============================================================ KANJI DRAWING */
 .kgrid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
   gap: .6rem;
 }
 .ktile {
   display: flex; flex-direction: column; align-items: center; gap: .3rem;
-  padding: .8rem .4rem; background: var(--surface);
+  padding: .7rem .4rem; background: var(--surface);
   border: 1px solid var(--border); border-radius: 12px; cursor: pointer; color: var(--text);
 }
 .ktile--nodata { opacity: .45; cursor: default; }
-.ktile__ch { font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.9rem; color: var(--kanji); }
+.ktile__ch { font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.8rem; color: var(--kanji); }
 .ktile__prog { font-size: .72rem; color: var(--text-dim); }
 
-.kd-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; flex-wrap: wrap; }
+.kd-top { display: flex; align-items: center; gap: .5rem; margin-bottom: .8rem; flex-wrap: wrap; }
 .kd-prompt {
-  font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.15rem;
-  color: var(--reading);
+  font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 1.1rem;
+  color: var(--reading); overflow-wrap: anywhere; min-width: 0;
 }
 .seg { margin-left: auto; display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
 .seg__btn { background: var(--surface); color: var(--text-dim); border: none; padding: .45rem .8rem; font: inherit; cursor: pointer; }
@@ -446,26 +461,37 @@ body {
 .kd-result--ok { color: #2f8f4e; } .kd-result--bad { color: var(--danger); }
 .kd-controls { display: flex; gap: .5rem; justify-content: center; margin-top: .4rem; }
 
+/* cheat panel: the list of every word using this kanji */
 .kd-cheat {
-  width: 100%; max-width: 400px; padding: 1rem;
+  width: 100%; max-width: 400px; padding: .9rem;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
 }
-.cheat__row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
-  font-size: 1.3rem; margin-bottom: .8rem; }
-.cheat__order { display: flex; justify-content: center; margin: .6rem 0; }
-.cheat__order svg { background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; width: 150px; height: 150px; }
-.cheat__prog { text-align: center; font-size: .95rem; color: var(--text-dim); }
+.cheat__title { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-dim); margin-bottom: .6rem; }
+.cheat__list { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .8rem; }
+.cheat__word {
+  display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem;
+  padding: .5rem .6rem; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.cheat__wk {
+  grid-row: 1 / span 2; align-self: center;
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  font-size: 1.3rem; color: var(--kanji); overflow-wrap: anywhere;
+}
+.cheat__wr { color: var(--reading); font-size: .9rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif; overflow-wrap: anywhere; }
+.cheat__wt { color: var(--trans); font-size: .9rem; overflow-wrap: anywhere; }
+.cheat__prog { text-align: center; font-size: .9rem; color: var(--text-dim); }
 
-/* desktop: canvas and cheat side by side, cheat always visible */
+/* desktop: canvas + cheat side by side */
 @media (min-width: 720px) {
   .kd-stage { flex-direction: row; align-items: flex-start; justify-content: center; }
   .kd-cheat { align-self: stretch; max-width: 300px; }
-  .cheat__order svg { width: 180px; height: 180px; }
 }
 
 /* ============================================================ DESKTOP */
 @media (min-width: 620px) {
-  .hub { grid-template-columns: repeat(4, 1fr); }
+  .hub { grid-template-columns: repeat(3, 1fr); }
   .palette-grid { grid-template-columns: repeat(3, 1fr); }
 }

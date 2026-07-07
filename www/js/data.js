@@ -1,74 +1,94 @@
 /* ============================================================
    DATA LAYER
    Single source of truth. Everything reads/writes through here.
-   Auto-saves to localStorage on every mutation (spec §1).
-
-   SCHEMA (localStorage key "n5data"):
-   {
-     categories: [ "食べ物", ... ]        // ordered, creation order
-     words: [ {
-        id, kanji, reading, translation, pos, category,
-        flashPoints, sentencePoints,
-        lastFlashDate, lastSentenceDate
-     } ]
-     kanji: { "食": { testPasses: 0 }, ... }   // per single char
-     settings: { theme, lastExport }
-   }
+   Auto-saves to localStorage on every mutation.
 
    STAR RULES (all derived, never stored on the word):
-     bronze  = flashPoints    >= 10
-     gold    = sentencePoints >= 10
+     bronze  = flashPoints    >= 5   (daily cadence)
+     gold    = sentencePoints >= 5
      silver  = every non-kana char in word.kanji has testPasses >= 5
    ============================================================ */
 const DB = (() => {
   const KEY = 'n5data';
-  const BRONZE_TARGET = 10;
-  const GOLD_TARGET   = 10;
+  const BRONZE_TARGET = 5;
+  const GOLD_TARGET   = 5;
   const SILVER_TARGET = 5;   // successful test-mode passes per kanji
 
   const blank = () => ({
     categories: [],
     words: [],
     kanji: {},
-    settings: { theme: 'light', palette: 'summer', tolerance: 'normal', lastExport: null }
+    settings: {
+      theme: 'light', palette: 'summer', tolerance: 'normal',
+      locale: 'en', lastPos: '', lastExport: null
+    }
   });
 
-  let state = load();
+  /* ---- storage seam ----------------------------------------
+     Native (APK): @capacitor/preferences → SharedPreferences, which
+     survives app updates and rides Android auto-backup. Browser (or
+     any context without the Capacitor bridge): localStorage. Same
+     data.js runs in both — the only async surface is the initial
+     read (hydrate); writes are fire-and-forget (Preferences flushes
+     fast and this app isn't write-heavy, so a mutation-then-kill
+     losing the last write is a non-issue; awaiting every save() would
+     ripple async through ~40 call sites for no real gain). */
+  const Store = (() => {
+    const pref = () => (window.Capacitor && window.Capacitor.Plugins
+      && window.Capacitor.Plugins.Preferences) || null;
+    async function get(key) {
+      const p = pref();
+      if (p) { try { const r = await p.get({ key }); return (r && r.value != null) ? r.value : null; } catch { return null; } }
+      try { return localStorage.getItem(key); } catch { return null; }
+    }
+    function set(key, value) {
+      const p = pref();
+      if (p) { p.set({ key, value }).catch(() => {}); return; }
+      try { localStorage.setItem(key, value); } catch {}
+    }
+    return { get, set };
+  })();
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return blank();
-      const p = JSON.parse(raw);
-      // defensive fill for forward-compat
-      return Object.assign(blank(), p, { settings: Object.assign(blank().settings, p.settings || {}) });
-    } catch { return blank(); }
+  // Starts blank so every synchronous getter works before hydrate resolves;
+  // main.js awaits hydrate() before first paint, so real values are in place.
+  let state = blank();
+
+  function merge(p) {
+    return Object.assign(blank(), p, { settings: Object.assign(blank().settings, p.settings || {}) });
   }
 
-  function save() {
-    localStorage.setItem(KEY, JSON.stringify(state));
+  async function hydrate() {
+    let raw = await Store.get(KEY);
+    // One-time migration: pre-Preferences builds wrote to localStorage. On
+    // native, if Preferences is empty but a legacy localStorage copy survived
+    // the update, adopt it (and persist forward). No-op on web, where Store
+    // already IS localStorage. Falls through to manual .json import if the
+    // WebView cleared localStorage across the update.
+    if (raw == null) {
+      try {
+        const legacy = localStorage.getItem(KEY);
+        if (legacy != null) { raw = legacy; Store.set(KEY, legacy); }
+      } catch { /* localStorage unavailable */ }
+    }
+    if (raw) {
+      try { state = merge(JSON.parse(raw)); reconcileKanji(); } catch { /* keep blank */ }
+    }
+    return state;
   }
+
+  function save() { Store.set(KEY, JSON.stringify(state)); }
 
   // ---- kanji extraction ------------------------------------
-  // CJK unified ideographs range; excludes kana & latin.
   const isKanji = ch => /[\u4e00-\u9faf\u3400-\u4dbf]/.test(ch);
+  function kanjiOf(str) { return [...(str || '')].filter(isKanji); }
 
-  function kanjiOf(str) {
-    return [...(str || '')].filter(isKanji);
-  }
-
-  // Rebuild the kanji map from all words. Adds missing chars,
-  // preserves existing progress, prunes chars no word uses.
   function reconcileKanji() {
     const used = new Set();
     state.words.forEach(w => kanjiOf(w.kanji).forEach(c => used.add(c)));
-    // add new
     used.forEach(c => { if (!state.kanji[c]) state.kanji[c] = { testPasses: 0 }; });
-    // prune orphans
     Object.keys(state.kanji).forEach(c => { if (!used.has(c)) delete state.kanji[c]; });
   }
 
-  // ---- id --------------------------------------------------
   const uid = () => 'w_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // ---- categories ------------------------------------------
@@ -82,15 +102,51 @@ const DB = (() => {
   }
 
   function categories() { return [...state.categories]; }
-
   function countInCategory(name) { return state.words.filter(w => w.category === name).length; }
 
-  // Cascade: removes the category AND its words (confirmed in UI).
   function deleteCategory(name) {
     state.categories = state.categories.filter(c => c !== name);
     state.words = state.words.filter(w => w.category !== name);
     reconcileKanji();
     save();
+  }
+
+  // Rename cascades to every word carrying the old category name.
+  function renameCategory(oldName, newName) {
+    newName = (newName || '').trim();
+    if (!newName) return false;
+    if (oldName === newName) return true;
+    if (state.categories.includes(newName)) return false;
+    const i = state.categories.indexOf(oldName);
+    if (i < 0) return false;
+    state.categories[i] = newName;
+    state.words.forEach(w => { if (w.category === oldName) w.category = newName; });
+    save();
+    return true;
+  }
+
+  // Reorder the category list (drag). `order` must be a permutation.
+  function reorderCategories(order) {
+    if (!Array.isArray(order) || order.length !== state.categories.length) return false;
+    const set = new Set(state.categories);
+    if (!order.every(n => set.has(n))) return false;
+    state.categories = order.slice();
+    save();
+    return true;
+  }
+
+  // Reorder words WITHIN a category. Walks the flat array, refilling each
+  // slot that belongs to `cat` from the new id order — other categories'
+  // relative positions untouched. No schema change; wordsIn() stays honest.
+  function reorderWords(cat, ids) {
+    const inCat = state.words.filter(w => w.category === cat);
+    if (ids.length !== inCat.length) return false;
+    const byId = {}; inCat.forEach(w => byId[w.id] = w);
+    if (!ids.every(id => byId[id])) return false;
+    let oi = 0;
+    state.words = state.words.map(w => w.category === cat ? byId[ids[oi++]] : w);
+    save();
+    return true;
   }
 
   // ---- words -----------------------------------------------
@@ -123,6 +179,11 @@ const DB = (() => {
     ['kanji', 'reading', 'translation', 'pos'].forEach(k => {
       if (k in fields) w[k] = (fields[k] || '').trim();
     });
+    // category is a controlled value (from a select) — assign as-is, enables
+    // moving a word between categories from the edit modal.
+    if ('category' in fields && fields.category && state.categories.includes(fields.category)) {
+      w.category = fields.category;
+    }
     reconcileKanji();
     save();
     return true;
@@ -137,14 +198,11 @@ const DB = (() => {
   // ---- flashcard scoring -----------------------------------
   const todayStr = () => new Date().toISOString().slice(0, 10);
 
-  // katakana → hiragana, trim, so か matches カ and stray spaces don't fail.
   function normKana(s) {
     return (s || '').trim().replace(/[\u30a1-\u30f6]/g,
       c => String.fromCharCode(c.charCodeAt(0) - 0x60));
   }
 
-  // Returns { correct, awarded, cappedToday } — awarded=false if right but
-  // already counted today (daily cap), so UI can explain the non-increment.
   function scoreFlash(id, typed) {
     const w = getWord(id);
     if (!w) return { correct: false, awarded: false, cappedToday: false };
@@ -172,12 +230,9 @@ const DB = (() => {
     };
   }
 
-  // per-kanji progress, for the drawing grid later
   function kanjiProgress(ch) { return state.kanji[ch]?.testPasses || 0; }
   function uniqueKanji() { return Object.keys(state.kanji); }
 
-  // Record one successful (≥80%) Test attempt for a kanji. Counts up to
-  // SILVER_TARGET; further passes are no-ops. Returns the new count.
   function recordKanjiPass(ch) {
     if (!state.kanji[ch]) state.kanji[ch] = { testPasses: 0 };
     if (state.kanji[ch].testPasses < SILVER_TARGET) {
@@ -187,6 +242,15 @@ const DB = (() => {
     return state.kanji[ch].testPasses;
   }
 
+  // ---- stats -----------------------------------------------
+  function stats() {
+    const mastered = state.words.filter(w => {
+      const s = stars(w);
+      return s.bronze && s.silver && s.gold;
+    }).length;
+    return { categories: state.categories.length, words: state.words.length, mastered };
+  }
+
   // ---- settings --------------------------------------------
   function getTheme() { return state.settings.theme; }
   function setTheme(t) { state.settings.theme = t; save(); }
@@ -194,35 +258,34 @@ const DB = (() => {
   function setPalette(p) { state.settings.palette = p; save(); }
   function getTolerance() { return state.settings.tolerance || 'normal'; }
   function setTolerance(t) { state.settings.tolerance = t; save(); }
+  function getLocale() { return state.settings.locale || 'en'; }
+  function setLocale(l) { state.settings.locale = l; save(); }
+  function getLastPos() { return state.settings.lastPos || ''; }
+  function setLastPos(p) { state.settings.lastPos = p || ''; save(); }
   function lastExport() { return state.settings.lastExport; }
   function markExport() { state.settings.lastExport = new Date().toISOString(); save(); }
 
   // ---- export / import -------------------------------------
   function exportJSON() { return JSON.stringify(state, null, 2); }
   function importJSON(raw) {
-    const p = JSON.parse(raw);            // throws on bad input → caller catches
-    if (!p.words || !p.categories) throw new Error('Nieprawidłowy plik.');
-    state = Object.assign(blank(), p, { settings: Object.assign(blank().settings, p.settings || {}) });
+    const p = JSON.parse(raw);
+    if (!p.words || !p.categories) throw new Error('Invalid file.');
+    state = merge(p);
     reconcileKanji();
     save();
   }
 
   return {
-    // constants exposed for progress displays
+    hydrate,
     SILVER_TARGET, BRONZE_TARGET, GOLD_TARGET,
-    // categories
     addCategory, categories, countInCategory, deleteCategory,
-    // words
+    renameCategory, reorderCategories, reorderWords,
     wordsIn, allWords, getWord, addWord, updateWord, deleteWord,
-    // kanji
     kanjiOf, uniqueKanji, kanjiProgress, recordKanjiPass,
-    // scoring
     scoreFlash, normKana,
-    // stars
-    stars,
-    // settings
-    getTheme, setTheme, getPalette, setPalette, getTolerance, setTolerance, lastExport, markExport,
-    // backup
+    stars, stats,
+    getTheme, setTheme, getPalette, setPalette, getTolerance, setTolerance,
+    getLocale, setLocale, getLastPos, setLastPos, lastExport, markExport,
     exportJSON, importJSON
   };
 })();

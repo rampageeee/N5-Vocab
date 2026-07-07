@@ -1,23 +1,26 @@
 /* ============================================================
    MAIN
-   Boot: appearance, routing, hub wiring, export reminder.
-   Theme + palette + export/import now live in Settings module.
+   Boot: appearance, i18n static pass, hub wiring, routing with
+   history. The backup reminder moved OUT of the top bar into the
+   Settings backup group; refreshExportStatus just nudges that
+   element when it exists.
    ============================================================ */
 const App = (() => {
 
-  // ---- export reminder (topbar) ----------------------------
   function refreshExportStatus() {
-    const el = document.getElementById('exportStatus');
-    const iso = DB.lastExport();
-    if (!iso) { el.textContent = 'Brak kopii'; el.classList.add('export-status--warn'); return; }
-    const days = Math.floor((Date.now() - new Date(iso)) / 86400000);
-    el.textContent = days === 0 ? 'Kopia: dziś' : `Kopia: ${days} dni temu`;
-    el.classList.toggle('export-status--warn', days >= 3);
+    // The status line now lives in Settings; update it if Settings has rendered.
+    if (window.Settings && typeof Settings.render === 'function') {
+      const node = document.getElementById('setBackupStatus');
+      if (node && !document.getElementById('view-settings').classList.contains('view--active')) return;
+      Settings.render();
+    }
   }
 
-  function init() {
+  async function init() {
     try {
+      await DB.hydrate();           // pull persisted state (native Preferences / localStorage) BEFORE any read
       Settings.applyAppearance();
+      I18N.applyStatic(document);   // localise all static chrome before first paint of dynamic views
 
       document.querySelectorAll('[data-goto]').forEach(function (btn) {
         btn.addEventListener('click', function () { Router.go(btn.dataset.goto); });
@@ -30,16 +33,17 @@ const App = (() => {
       Kanji.bind();
       Settings.bind();
 
-      Router.register('hub',        refreshExportStatus);
+      Router.register('hub',        function () {});
       Router.register('vocabulary', function () { Vocab.render(); });
       Router.register('flashcards', function () { Flash.render(); });
       Router.register('kanji',      function () { Kanji.render(); });
       Router.register('settings',   function () { Settings.render(); });
+      Router.register('sentences',  function () {});
+      Router.register('grammar',    function () {});
+      Router.register('kana',       function () {});
 
-      refreshExportStatus();
-      Router.go('hub');
+      Router.init();   // establishes hub base entry + renders hub
     } catch (err) {
-      // Surface it on-screen (phone-friendly) instead of a mute failure.
       throw new Error('init failed: ' + err.message + ' — check that all js/ files loaded');
     }
   }
