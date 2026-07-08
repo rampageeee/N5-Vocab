@@ -101,7 +101,10 @@
 
     <!-- ============ VOCABULARY ============ -->
     <section class="view" id="view-vocabulary">
-      <div class="view__head"><h1 class="view__title" data-i18n="vocab.title">Dictionary</h1></div>
+      <div class="view__head">
+        <h1 class="view__title" data-i18n="vocab.title">Dictionary</h1>
+        <button class="foldall-btn" id="btnFoldAll" type="button" hidden aria-label="Collapse all">▾</button>
+      </div>
 
       <form class="addcat" id="formAddCat">
         <input type="text" id="inpNewCat" data-i18n-ph="vocab.newCat.ph" placeholder="New category…" autocomplete="off">

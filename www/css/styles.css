@@ -103,7 +103,7 @@ body {
 /* ============================================================ VIEWS */
 .view { display: none; padding: .85rem; max-width: 780px; margin: 0 auto; }
 .view--active { display: block; }
-.view__head { margin-bottom: 1rem; }
+.view__head { margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .view__title { font-size: 1.35rem; margin: 0; }
 .stub { color: var(--text-dim); }
 
@@ -179,6 +179,31 @@ body {
   font-size: 1rem; cursor: pointer; padding: .2rem .4rem; flex: none;
 }
 .cat__empty { color: var(--text-dim); font-size: .85rem; padding: .5rem .2rem; }
+
+/* accordion — header toggles the block; grip/edit keep their own cursors */
+.cat__head { cursor: pointer; }
+.cat__caret {
+  flex: none; color: var(--text-dim); font-size: .8rem; line-height: 1;
+  transition: transform .15s ease;
+}
+.cat.is-collapsed .cat__caret { transform: rotate(-90deg); }
+.cat__count { flex: none; color: var(--text-dim); font-size: .8rem; }
+.cat.is-collapsed .wlist,
+.cat.is-collapsed .addword-btn { display: none; }
+
+/* fold-all: small rounded-square glyph button, right-aligned in the view head.
+   Square + equal radius means a 90° rotation only visibly turns the triangle. */
+.foldall-btn {
+  flex: none; width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: .85rem; line-height: 1; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  transition: transform .15s ease;
+}
+.foldall-btn:active { background: var(--border); }
+.foldall-btn.is-all-collapsed { transform: rotate(-90deg); }
 
 /* word rows — GRID, not a table, so long content wraps down instead of
    pushing the page sideways, and rows can be drag-reordered on touch */

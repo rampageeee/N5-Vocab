@@ -21,6 +21,7 @@ const I18N = (() => {
       'vocab.newCat.ph': 'New category…', 'vocab.addCat': '+ Category',
       'vocab.empty': 'No categories yet. Add the first one above.',
       'vocab.emptyCat': 'Empty category.', 'vocab.addWord': '+ Add word',
+      'vocab.collapseAll': 'Collapse all', 'vocab.expandAll': 'Expand all',
       'th.kanji': 'Kanji', 'th.hiragana': 'Hiragana', 'th.trans': 'Translation',
       'cat.rename': 'Rename', 'cat.drag': 'Drag to reorder', 'cat.dupName': 'A category with that name already exists.',
       /* word modal */
@@ -148,6 +149,7 @@ const I18N = (() => {
       'vocab.newCat.ph': 'Nowa kategoria…', 'vocab.addCat': '+ Kategoria',
       'vocab.empty': 'Brak kategorii. Dodaj pierwszą powyżej.',
       'vocab.emptyCat': 'Pusta kategoria.', 'vocab.addWord': '+ Dodaj słowo',
+      'vocab.collapseAll': 'Zwiń wszystko', 'vocab.expandAll': 'Rozwiń wszystko',
       'th.kanji': 'Kanji', 'th.hiragana': 'Hiragana', 'th.trans': 'Tłumaczenie',
       'cat.rename': 'Zmień nazwę', 'cat.drag': 'Przeciągnij, aby zmienić kolejność',
       'cat.dupName': 'Kategoria o tej nazwie już istnieje.',

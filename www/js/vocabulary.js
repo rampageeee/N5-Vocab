@@ -19,6 +19,12 @@ const Vocab = (() => {
 
   const GRIP = '<span class="grip" aria-hidden="true">⠿</span>';
 
+  // Which categories are folded. Ephemeral (not persisted to DB) but module-
+  // scoped so it survives re-renders within a session — folding then adding a
+  // word or reordering must NOT silently re-expand everything. Keyed by name;
+  // migrated on rename, stale keys after delete are harmless (just ignored).
+  const collapsed = new Set();
+
   /* ---- reusable pointer sortable ---------------------------
      Drag by a handle; siblings are re-slotted live as the pointer
      crosses their midpoints; commit reads the resulting id order.
@@ -98,6 +104,7 @@ const Vocab = (() => {
     renderTOC();
     renderBody();
     wireWordLists();
+    updateFoldAllLabel();
   }
 
   function renderTOC() {
@@ -141,10 +148,12 @@ const Vocab = (() => {
       const empty = words.length === 0
         ? `<div class="cat__empty">${esc(t('vocab.emptyCat'))}</div>` : '';
 
-      return `<section class="cat" id="cat-${i}" data-cat="${esc(cat)}">
-        <div class="cat__head">
+      return `<section class="cat ${collapsed.has(cat) ? 'is-collapsed' : ''}" id="cat-${i}" data-cat="${esc(cat)}">
+        <div class="cat__head" data-toggle="${esc(cat)}">
           <button class="cat__grip" data-i18n-aria="cat.drag" aria-label="${esc(t('cat.drag'))}">${GRIP}</button>
+          <span class="cat__caret" aria-hidden="true">▾</span>
           <span class="cat__name">${esc(cat)}</span>
+          <small class="cat__count">${words.length}</small>
           <button class="cat__edit" data-rename="${esc(cat)}" data-i18n-aria="cat.rename" aria-label="${esc(t('cat.rename'))}">✎</button>
         </div>
         <div class="wlist" data-cat="${esc(cat)}">${rows}${empty}</div>
@@ -165,6 +174,48 @@ const Vocab = (() => {
     });
   }
 
+  // ---- accordion -------------------------------------------
+  // Class flip only — no re-render, so scroll position and word-row listeners
+  // are untouched. Find the section by matching dataset.cat rather than an
+  // attribute selector (category names can contain characters that break one).
+  function sectionFor(cat) {
+    return [...document.querySelectorAll('#vocabBody > .cat')].find(s => s.dataset.cat === cat) || null;
+  }
+
+  function toggleCat(cat) {
+    const willCollapse = !collapsed.has(cat);
+    if (willCollapse) collapsed.add(cat); else collapsed.delete(cat);
+    const sec = sectionFor(cat);
+    if (sec) sec.classList.toggle('is-collapsed', willCollapse);
+    updateFoldAllLabel();
+  }
+
+  // One switch: if anything is open, collapse everything; otherwise expand all.
+  function foldAll() {
+    const cats = DB.categories();
+    const collapseAll = cats.some(c => !collapsed.has(c));
+    cats.forEach(c => { if (collapseAll) collapsed.add(c); else collapsed.delete(c); });
+    document.querySelectorAll('#vocabBody > .cat').forEach(sec =>
+      sec.classList.toggle('is-collapsed', collapsed.has(sec.dataset.cat)));
+    updateFoldAllLabel();
+  }
+
+  function updateFoldAllLabel() {
+    const btn = document.getElementById('btnFoldAll');
+    if (!btn) return;
+    const cats = DB.categories();
+    btn.hidden = cats.length === 0;
+    const anyOpen = cats.some(c => !collapsed.has(c));
+    // Aggregate caret mirrors the per-category carets: ▾ when anything is open,
+    // rotated to ▸ when all folded — same state convention everywhere. The
+    // action (what a click does) rides on aria-label. One source of truth
+    // (the collapsed set), recomputed here on every toggle/render, so the glyph
+    // can't drift from the carets.
+    btn.textContent = '▾';
+    btn.classList.toggle('is-all-collapsed', !anyOpen);
+    btn.setAttribute('aria-label', t(anyOpen ? 'vocab.collapseAll' : 'vocab.expandAll'));
+  }
+
   // ---- inline category rename ------------------------------
   function startRename(catName, headEl) {
     const nameEl = headEl.querySelector('.cat__name');
@@ -180,6 +231,10 @@ const Vocab = (() => {
       const nn = input.value.trim();
       if (nn && nn !== catName && !DB.renameCategory(catName, nn)) alert(t('cat.dupName'));
       else if (nn && nn !== catName) DB.renameCategory(catName, nn);
+      // Carry fold state across a successful rename (old name is gone, new one exists).
+      if (nn && nn !== catName && collapsed.has(catName) && !DB.categories().includes(catName)) {
+        collapsed.delete(catName); collapsed.add(nn);
+      }
       render();
     };
     input.addEventListener('keydown', e => {
@@ -339,7 +394,15 @@ const Vocab = (() => {
       if (edit)   return openEdit(edit.dataset.edit);
       if (rename) return startRename(rename.dataset.rename, rename.closest('.cat__head'));
       if (detail) return openDetail(detail.dataset.detail);
+      // Pressing the header folds/unfolds the category — but not when the hit is
+      // the drag grip or the inline rename input living inside that same header.
+      if (e.target.closest('.cat__grip') || e.target.closest('.cat__name-input')) return;
+      const head = e.target.closest('[data-toggle]');
+      if (head) return toggleCat(head.dataset.toggle);
     });
+
+    const foldBtn = document.getElementById('btnFoldAll');
+    if (foldBtn) foldBtn.addEventListener('click', foldAll);
 
     document.getElementById('formWord').addEventListener('submit', submitWord);
     document.getElementById('btnCancelWord').addEventListener('click', closeModal);
