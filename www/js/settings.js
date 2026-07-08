@@ -43,7 +43,10 @@ const Settings = (() => {
     document.body.setAttribute('data-theme', theme);
     const pal = PALETTES[DB.getPalette()] || PALETTES.summer;
     const triad = pal[theme] || pal.light;
-    const root = document.documentElement;
+    // Inject onto the SAME element that carries data-theme (body). Injecting on
+    // <html> lets the [data-theme] rule that lands on <body> re-declare these
+    // three vars and shadow the injection for body's whole subtree.
+    const root = document.body;
     root.style.setProperty('--kanji', triad.kanji);
     root.style.setProperty('--reading', triad.reading);
     root.style.setProperty('--trans', triad.trans);

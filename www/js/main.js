@@ -31,16 +31,21 @@ const App = (() => {
       Vocab.bind();
       Flash.bind();
       Kanji.bind();
+      Kana.bind();
+      Grammar.bind();
+      Sentences.bind();
+      Review.bind();
       Settings.bind();
 
       Router.register('hub',        function () {});
       Router.register('vocabulary', function () { Vocab.render(); });
       Router.register('flashcards', function () { Flash.render(); });
       Router.register('kanji',      function () { Kanji.render(); });
+      Router.register('kana',       function () { Kana.render(); });
+      Router.register('grammar',    function () { Grammar.render(); });
+      Router.register('sentences',  function () { Sentences.render(); });
+      Router.register('review',     function () { Review.render(); });
       Router.register('settings',   function () { Settings.render(); });
-      Router.register('sentences',  function () {});
-      Router.register('grammar',    function () {});
-      Router.register('kana',       function () {});
 
       Router.init();   // establishes hub base entry + renders hub
     } catch (err) {

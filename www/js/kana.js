@@ -1,0 +1,295 @@
+/* ============================================================
+   KANA CHART
+   Gojūon (46) + dakuten/handakuten (25) + yōon (33), hiragana/
+   katakana toggle. Practice-only tracing — NOT the kanji flow:
+   no Test mode, no silver-star loop, no cheat panel (those key
+   on dictionary words + DB.recordKanjiPass, which don't apply
+   to kana). Scoring reused from StrokeEngine (js/stroke-engine.js,
+   load before this file) — kanji.js and kana.js share one scoring
+   implementation, not two that could drift apart.
+
+   Yōon entries are TWO characters traced in sequence (base + small
+   ゃ/ゅ/ょ) — no new glyphs needed, both already exist in the
+   gojūon/dakuten sets, so a "sequence" is just two single-char
+   practice steps back to back.
+
+   Grid tiles reuse the existing .kgrid/.ktile classes from the
+   kanji view (same look: character + status), so this adds no
+   parallel CSS to drift against those.
+
+   DATA: window.KANA_DATA must be populated the same way
+   window.KANJI_DATA is (KanjiVG stroke paths, keyed by character,
+   array of path "d" strings per stroke) — see data/kana-data.js
+   and tools/build-kana-data.js. Until populated, tiles render
+   disabled with real "no data yet" state — never fabricated
+   stroke paths standing in for real ones.
+   ============================================================ */
+const Kana = (() => {
+
+  const esc = s => (s || '').replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const t = (k, ...a) => I18N.t(k, ...a);
+  const el = id => document.getElementById(id);
+
+  const SE = StrokeEngine;
+  const VBOX = SE.VBOX, N = SE.N, TOL = SE.TOL;
+
+  // ---- the 46 + 25 + 33 set --------------------------------
+  function row(pairs) { return pairs.map(([romaji, hira, kata]) => ({ romaji, hira, kata })); }
+  function yoonRow(hiraBase, kataBase, romajiTriple) {
+    const small = [['ゃ', 'ャ', romajiTriple[0]], ['ゅ', 'ュ', romajiTriple[1]], ['ょ', 'ョ', romajiTriple[2]]];
+    return small.map(([sh, sk, rj]) => ({ romaji: rj, hira: hiraBase + sh, kata: kataBase + sk }));
+  }
+
+  const GOJUON = row([
+    ['a','あ','ア'], ['i','い','イ'], ['u','う','ウ'], ['e','え','エ'], ['o','お','オ'],
+    ['ka','か','カ'], ['ki','き','キ'], ['ku','く','ク'], ['ke','け','ケ'], ['ko','こ','コ'],
+    ['sa','さ','サ'], ['shi','し','シ'], ['su','す','ス'], ['se','せ','セ'], ['so','そ','ソ'],
+    ['ta','た','タ'], ['chi','ち','チ'], ['tsu','つ','ツ'], ['te','て','テ'], ['to','と','ト'],
+    ['na','な','ナ'], ['ni','に','ニ'], ['nu','ぬ','ヌ'], ['ne','ね','ネ'], ['no','の','ノ'],
+    ['ha','は','ハ'], ['hi','ひ','ヒ'], ['fu','ふ','フ'], ['he','へ','ヘ'], ['ho','ほ','ホ'],
+    ['ma','ま','マ'], ['mi','み','ミ'], ['mu','む','ム'], ['me','め','メ'], ['mo','も','モ'],
+    ['ya','や','ヤ'], ['yu','ゆ','ユ'], ['yo','よ','ヨ'],
+    ['ra','ら','ラ'], ['ri','り','リ'], ['ru','る','ル'], ['re','れ','レ'], ['ro','ろ','ロ'],
+    ['wa','わ','ワ'], ['wo','を','ヲ'],
+    ['n','ん','ン']
+  ]);
+  const DAKUTEN = row([
+    ['ga','が','ガ'], ['gi','ぎ','ギ'], ['gu','ぐ','グ'], ['ge','げ','ゲ'], ['go','ご','ゴ'],
+    ['za','ざ','ザ'], ['ji','じ','ジ'], ['zu','ず','ズ'], ['ze','ぜ','ゼ'], ['zo','ぞ','ゾ'],
+    ['da','だ','ダ'], ['dji','ぢ','ヂ'], ['dzu','づ','ヅ'], ['de','で','デ'], ['do','ど','ド'],
+    ['ba','ば','バ'], ['bi','び','ビ'], ['bu','ぶ','ブ'], ['be','べ','ベ'], ['bo','ぼ','ボ'],
+    ['pa','ぱ','パ'], ['pi','ぴ','ピ'], ['pu','ぷ','プ'], ['pe','ぺ','ペ'], ['po','ぽ','ポ']
+  ]);
+  const YOON = [].concat(
+    yoonRow('き','キ',['kya','kyu','kyo']), yoonRow('ぎ','ギ',['gya','gyu','gyo']),
+    yoonRow('し','シ',['sha','shu','sho']), yoonRow('じ','ジ',['ja','ju','jo']),
+    yoonRow('ち','チ',['cha','chu','cho']),
+    yoonRow('に','ニ',['nya','nyu','nyo']),
+    yoonRow('ひ','ヒ',['hya','hyu','hyo']), yoonRow('び','ビ',['bya','byu','byo']), yoonRow('ぴ','ピ',['pya','pyu','pyo']),
+    yoonRow('み','ミ',['mya','myu','myo']),
+    yoonRow('り','リ',['rya','ryu','ryo'])
+  );
+
+  let script = 'hira'; // 'hira' | 'kata'
+
+  // ---- lazy data load (mirrors kanji.js exactly) -----------
+  let dataLoaded = false, dataLoading = false;
+  function ensureData(cb) {
+    if (dataLoaded) return cb(true);
+    if (window.KANA_DATA) { dataLoaded = true; return cb(true); }
+    if (dataLoading) return;
+    dataLoading = true;
+    const s = document.createElement('script');
+    s.src = 'data/kana-data.js';
+    s.onload = () => { dataLoaded = true; dataLoading = false; cb(true); };
+    s.onerror = () => { dataLoading = false; cb(false); };
+    document.head.appendChild(s);
+  }
+  const hasData = ch => !!(window.KANA_DATA && window.KANA_DATA[ch]);
+  const strokesFor = ch => {
+    const raw = window.KANA_DATA && window.KANA_DATA[ch];
+    return raw ? raw.map(d => SE.resample(SE.parsePath(d), N)) : null;
+  };
+  const rawFor = ch => {
+    const raw = window.KANA_DATA && window.KANA_DATA[ch];
+    return raw ? raw.map(SE.parsePath) : null;
+  };
+
+  // ---- grid --------------------------------------------------
+  function tile(entry) {
+    const ch = script === 'hira' ? entry.hira : entry.kata;
+    // a yōon entry is only "ready" once BOTH characters have data
+    const chars = [...ch];
+    const has = chars.every(hasData);
+    return `<button class="ktile ${has ? '' : 'ktile--nodata'}" ${has ? `data-seq="${esc(ch)}"` : 'disabled'}>
+      <span class="ktile__ch">${esc(ch)}</span>
+      <span class="ktile__prog">${esc(entry.romaji)}</span>
+    </button>`;
+  }
+
+  function render() {
+    el('knHira').classList.toggle('seg--on', script === 'hira');
+    el('knKata').classList.toggle('seg--on', script === 'kata');
+    ensureData(ok => {
+      const note = ok ? '' : `<p class="stub">${esc(t('kana.loadFail'))}</p>`;
+      el('knGridGojuon').innerHTML  = note || GOJUON.map(tile).join('');
+      el('knGridDakuten').innerHTML = note || DAKUTEN.map(tile).join('');
+      el('knGridYoon').innerHTML    = note || YOON.map(tile).join('');
+    });
+  }
+
+  // ---- canvas session (practice-only; no test mode) --------
+  let SIZE = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
+  let seq = [], seqPos = 0;      // seq: array of single chars to trace in order
+  let curCh = null, ref = null, refRaw = null;
+  let strokes = [], cur = null;
+  let gg, rg, ig, box;
+
+  const toGlyph  = p => ({ x: p.x * (VBOX / SIZE), y: p.y * (VBOX / SIZE) });
+  const toCanvas = p => ({ x: p.x * (SIZE / VBOX), y: p.y * (SIZE / VBOX) });
+
+  function openSeq(str) {
+    seq = [...str];   // 1 char for gojuon/dakuten, 2 for yoon (base + small)
+    seqPos = 0;
+    el('kanaGridView').hidden = true;
+    el('kanaDraw').hidden = false;
+    loadCurrent();
+    requestAnimationFrame(fit);
+  }
+
+  function loadCurrent() {
+    curCh = seq[seqPos];
+    ref = strokesFor(curCh);
+    refRaw = rawFor(curCh);
+    strokes = []; cur = null;
+    el('knPrompt').textContent = seq.length > 1 ? `${seq.join('')} (${seqPos + 1}/${seq.length})` : seq[0];
+    el('knResult').textContent = '';
+    el('knResult').className = 'kd-result';
+    drawRef(); redrawInk(); updateHint();
+  }
+
+  function backToGrid() {
+    el('kanaDraw').hidden = true;
+    el('kanaGridView').hidden = false;
+    render();
+  }
+
+  function fit() {
+    box = el('knCanvasBox');
+    SIZE = box.clientWidth;
+    ['knGuide', 'knRef', 'knInk'].forEach(id => {
+      const c = el(id); c.width = SIZE * DPR; c.height = SIZE * DPR;
+      c.getContext('2d').setTransform(DPR, 0, 0, DPR, 0, 0);
+    });
+    gg = el('knGuide').getContext('2d');
+    rg = el('knRef').getContext('2d');
+    ig = el('knInk').getContext('2d');
+    drawGuide(); drawRef(); redrawInk();
+  }
+
+  function drawGuide() {
+    gg.clearRect(0, 0, SIZE, SIZE);
+    gg.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border');
+    gg.globalAlpha = .6; gg.lineWidth = 1; gg.setLineDash([5, 5]);
+    gg.beginPath();
+    gg.moveTo(SIZE/2, 0); gg.lineTo(SIZE/2, SIZE);
+    gg.moveTo(0, SIZE/2); gg.lineTo(SIZE, SIZE/2);
+    gg.moveTo(0, 0); gg.lineTo(SIZE, SIZE);
+    gg.moveTo(SIZE, 0); gg.lineTo(0, SIZE);
+    gg.stroke(); gg.setLineDash([]); gg.globalAlpha = 1;
+  }
+
+  function drawRef() {
+    if (!rg) return;
+    rg.clearRect(0, 0, SIZE, SIZE);
+    if (!refRaw) return;
+    const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
+    refRaw.forEach((raw, idx) => {
+      rg.strokeStyle = col;
+      rg.globalAlpha = idx < strokes.length ? 0.28 : 0.13;
+      rg.lineWidth = 6; rg.lineCap = 'round'; rg.lineJoin = 'round';
+      rg.beginPath();
+      raw.forEach((p, k) => { const c = toCanvas(p); k ? rg.lineTo(c.x, c.y) : rg.moveTo(c.x, c.y); });
+      rg.stroke();
+    });
+    if (refRaw.length && strokes.length < refRaw.length) {
+      const s = toCanvas(refRaw[strokes.length][0]);
+      rg.globalAlpha = 1; rg.fillStyle = col;
+      rg.beginPath(); rg.arc(s.x, s.y, 4, 0, 7); rg.fill();
+    }
+    rg.globalAlpha = 1;
+  }
+
+  function redrawInk() {
+    if (!ig) return;
+    ig.clearRect(0, 0, SIZE, SIZE);
+    ig.strokeStyle = getComputedStyle(document.body).getPropertyValue('--text');
+    ig.lineWidth = 5; ig.lineCap = 'round'; ig.lineJoin = 'round';
+    (cur ? strokes.concat([cur]) : strokes).forEach(st => {
+      ig.beginPath();
+      st.forEach((p, k) => { k ? ig.lineTo(p.x, p.y) : ig.moveTo(p.x, p.y); });
+      ig.stroke();
+    });
+  }
+
+  function pos(e) {
+    const r = box.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function onDown(e) {
+    if (!ref || strokes.length >= ref.length) return;
+    el('knInk').setPointerCapture(e.pointerId);
+    cur = [pos(e)]; redrawInk();
+  }
+  function onMove(e) { if (cur) { cur.push(pos(e)); redrawInk(); } }
+  function onUp() {
+    if (!cur) return;
+    if (cur.length > 2) commitStroke(cur);
+    cur = null; redrawInk();
+  }
+
+  // Practice-only: same lenient practice tolerance kanji.js uses, keyed
+  // off the shared tolerance setting so kana and kanji feel consistent.
+  function practiceTol(tl) { return { pos: tl.pos * 1.5, shape: tl.shape * 1.5, dir: Math.max(0, tl.dir - 0.2), ramp: tl.ramp }; }
+
+  function commitStroke(raw) {
+    const idx = strokes.length;
+    const tl = TOL[DB.getTolerance()];
+    const g = SE.grade(SE.scoreStroke(raw.map(toGlyph), ref[idx]), practiceTol(tl));
+    if (g >= 0.5) {
+      strokes.push(raw);
+      drawRef(); updateHint();
+      if (strokes.length === ref.length) advance();
+    } else {
+      el('knResult').textContent = t('kanji.retryStroke');
+      el('knResult').className = 'kd-result kd-result--bad';
+    }
+  }
+
+  function advance() {
+    if (seqPos < seq.length - 1) {
+      seqPos++;
+      loadCurrent();
+    } else {
+      el('knResult').textContent = t('kanji.allStrokes');
+      el('knResult').className = 'kd-result kd-result--ok';
+      el('knHint').textContent = t('kanji.done');
+    }
+  }
+
+  function updateHint() {
+    el('knHint').textContent = ref && strokes.length < ref.length
+      ? t('kanji.stroke', strokes.length + 1, ref.length) : t('kanji.done');
+  }
+
+  function clear() {
+    strokes = []; cur = null;
+    el('knResult').textContent = '';
+    el('knResult').className = 'kd-result';
+    drawRef(); redrawInk(); updateHint();
+  }
+
+  /* ---------- bind ---------- */
+  function bind() {
+    el('knHira').addEventListener('click', () => { script = 'hira'; render(); });
+    el('knKata').addEventListener('click', () => { script = 'kata'; render(); });
+    [el('knGridGojuon'), el('knGridDakuten'), el('knGridYoon')].forEach(g => {
+      g.addEventListener('click', e => {
+        const b = e.target.closest('[data-seq]');
+        if (b) openSeq(b.dataset.seq);
+      });
+    });
+    el('knBack').addEventListener('click', backToGrid);
+    el('knClear').addEventListener('click', clear);
+    const ink = el('knInk');
+    ink.addEventListener('pointerdown', onDown);
+    ink.addEventListener('pointermove', onMove);
+    ink.addEventListener('pointerup', onUp);
+    ink.addEventListener('pointercancel', () => { cur = null; redrawInk(); });
+    window.addEventListener('resize', () => { if (!el('kanaDraw').hidden) fit(); });
+  }
+
+  return { render, bind };
+})();

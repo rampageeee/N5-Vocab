@@ -90,6 +90,12 @@
           </span>
           <span class="hub__label" data-i18n="hub.kana">Kana</span>
         </button>
+        <button class="hub__tile" data-goto="review">
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.3l2.4 2.4 4.7-5"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.review">Review</span>
+        </button>
       </nav>
     </section>
 
@@ -190,17 +196,116 @@
     <!-- ============ STUBS ============ -->
     <section class="view" id="view-sentences">
       <div class="view__head"><h1 class="view__title" data-i18n="hub.sentences">Sentences</h1></div>
-      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
+
+      <form class="chk-form" id="chkForm">
+        <textarea id="chkInput" rows="2" data-i18n-ph="checker.input.ph" placeholder="Type a sentence…"></textarea>
+        <button type="submit" class="tool-btn" data-i18n="checker.check">Check</button>
+      </form>
+
+      <div class="chk-output" id="chkOutput" hidden>
+        <div class="chk-sentence jp" id="chkSentence"></div>
+        <div class="chk-detail" id="chkDetail" hidden></div>
+        <div class="chk-corrected" id="chkCorrected" hidden>
+          <div class="chk-corrected__label" data-i18n="checker.corrected">Suggested correction</div>
+          <div class="chk-corrected__text jp" id="chkCorrectedText"></div>
+          <div class="chk-corrected__note" id="chkCorrectedNote" hidden></div>
+        </div>
+      </div>
     </section>
 
     <section class="view" id="view-grammar">
       <div class="view__head"><h1 class="view__title" data-i18n="hub.grammar">Grammar</h1></div>
-      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
+
+      <div class="seg" style="margin-bottom:1.2rem;">
+        <button class="seg__btn seg--on" id="gramRef" data-i18n="grammar.reference">Reference</button>
+        <button class="seg__btn" id="gramMine" data-i18n="grammar.mine">My notes</button>
+      </div>
+
+      <div id="gramRefView">
+        <div class="gram-legend">
+          <button class="gram-legend__toggle" id="gramLegendToggle" data-i18n="grammar.legend">Notation legend ▸</button>
+          <div class="gram-legend__body" id="gramLegendBody" hidden></div>
+        </div>
+        <nav class="toc" id="gramToc"></nav>
+        <div id="gramRefBody"></div>
+      </div>
+
+      <div id="gramMineView" hidden>
+        <button class="tool-btn" id="btnAddGrammar" data-i18n="grammar.add">+ Add pattern</button>
+        <div id="gramMineList" style="margin-top:1rem;"></div>
+      </div>
     </section>
 
+    <!-- ============ KANA ============ -->
     <section class="view" id="view-kana">
-      <div class="view__head"><h1 class="view__title" data-i18n="hub.kana">Kana</h1></div>
-      <p class="stub" data-i18n="stub.next">This section will be built in the next step.</p>
+      <div id="kanaGridView">
+        <div class="view__head"><h1 class="view__title" data-i18n="hub.kana">Kana</h1></div>
+
+        <div class="seg" style="margin-bottom:1.2rem;">
+          <button class="seg__btn seg--on" id="knHira" data-i18n="kana.hiragana">Hiragana</button>
+          <button class="seg__btn" id="knKata" data-i18n="kana.katakana">Katakana</button>
+        </div>
+
+        <div class="kana-group">
+          <h2 class="kana-group__title" data-i18n="kana.gojuon">Gojūon</h2>
+          <div class="kgrid" id="knGridGojuon"></div>
+        </div>
+        <div class="kana-group">
+          <h2 class="kana-group__title" data-i18n="kana.dakuten">Dakuten / handakuten</h2>
+          <div class="kgrid" id="knGridDakuten"></div>
+        </div>
+        <div class="kana-group">
+          <h2 class="kana-group__title" data-i18n="kana.yoon">Yōon</h2>
+          <div class="kgrid" id="knGridYoon"></div>
+        </div>
+      </div>
+
+      <div id="kanaDraw" hidden>
+        <div class="kd-top">
+          <button class="tool-btn tool-btn--ghost" id="knBack" data-i18n="kanji.back">← Grid</button>
+          <span class="kd-prompt" id="knPrompt"></span>
+        </div>
+        <div class="kd-left" style="margin:0 auto;">
+          <div class="kd-canvas-box" id="knCanvasBox">
+            <canvas id="knGuide"></canvas>
+            <canvas id="knRef"></canvas>
+            <canvas id="knInk"></canvas>
+          </div>
+          <div class="kd-hint" id="knHint"></div>
+          <div class="kd-result" id="knResult"></div>
+          <div class="kd-controls">
+            <button class="tool-btn tool-btn--ghost" id="knClear" data-i18n="kanji.clear">Clear</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ REVIEW (§3.7 mistake review) ============ -->
+    <section class="view" id="view-review">
+      <div class="view__head"><h1 class="view__title" data-i18n="hub.review">Review</h1></div>
+
+      <div id="revEmpty" hidden>
+        <p class="stub" data-i18n="review.empty">No mistakes to review right now.</p>
+      </div>
+
+      <div id="revStage" hidden>
+        <div class="fc-progress-num" id="revCounter"></div>
+        <div class="rev-card">
+          <div class="rev-sentence jp" id="revSentence"></div>
+          <div class="rev-rule" id="revRule"></div>
+          <div class="rev-streak" id="revStreak"></div>
+        </div>
+        <div class="fc-answer">
+          <input type="text" id="revInput" data-i18n-ph="review.input.ph" placeholder="type the correction…" autocomplete="off" autocapitalize="off">
+          <button class="tool-btn" id="revAction" data-mode="check">Check</button>
+        </div>
+        <div class="rev-feedback" id="revFeedback"></div>
+      </div>
+
+      <div id="revComplete" hidden>
+        <p class="stub" id="revCompleteMsg"></p>
+        <button class="tool-btn" id="revAgain" data-i18n="review.again">Review again</button>
+      </div>
     </section>
 
     <!-- ============ SETTINGS ============ -->
@@ -307,6 +412,14 @@
             <option value="expression" data-i18n="pos.expression">expression</option>
           </select>
         </label>
+        <label class="fld" id="fldVerbClass" hidden>
+          <span class="fld__lbl" data-i18n="word.verbClass">Verb class</span>
+          <select id="wVerbClass">
+            <option value="godan" data-i18n="vclass.godan">godan (う-verb)</option>
+            <option value="ichidan" data-i18n="vclass.ichidan">ichidan (る-verb)</option>
+            <option value="irregular" data-i18n="vclass.irregular">irregular (する / 来る)</option>
+          </select>
+        </label>
         <label class="fld">
           <span class="fld__lbl" data-i18n="word.category">Category</span>
           <select id="wCategory"></select>
@@ -332,12 +445,53 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: add/edit user grammar pattern ============ -->
+  <div class="modal" id="modalGrammar" hidden>
+    <div class="modal__box">
+      <h2 class="modal__title" id="modalGrammarTitle">New pattern</h2>
+      <form id="formGrammar">
+        <label class="fld">
+          <span class="fld__lbl" data-i18n="grammar.name">Pattern name</span>
+          <input type="text" id="gName" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl" data-i18n="grammar.structure">Structure</span>
+          <input type="text" id="gStructure" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl" data-i18n="grammar.example">Example</span>
+          <input type="text" id="gExample" autocomplete="off">
+        </label>
+        <label class="fld">
+          <span class="fld__lbl" data-i18n="grammar.note">Note</span>
+          <input type="text" id="gNote" autocomplete="off">
+        </label>
+        <input type="hidden" id="gId">
+
+        <div class="modal__actions">
+          <button type="button" class="tool-btn tool-btn--danger" id="btnDeleteGrammar" data-i18n="word.delete" hidden>Delete</button>
+          <div class="modal__actions-right">
+            <button type="button" class="tool-btn tool-btn--ghost" id="btnCancelGrammar" data-i18n="word.cancel">Cancel</button>
+            <button type="submit" class="tool-btn" data-i18n="word.save">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="js/data.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/router.js"></script>
   <script src="js/vocabulary.js"></script>
   <script src="js/flashcards.js"></script>
+  <script src="js/stroke-engine.js"></script>
   <script src="js/kanji.js"></script>
+  <script src="js/kana.js"></script>
+  <script src="js/grammar-rules.js"></script>
+  <script src="js/grammar.js"></script>
+  <script src="js/checker.js"></script>
+  <script src="js/sentences.js"></script>
+  <script src="js/review.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/main.js"></script>
 </body>

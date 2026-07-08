@@ -5,6 +5,11 @@
    sideways, and so rows and category blocks can be drag-reordered
    on touch. Category names are editable inline; a word's category
    can be changed from the edit modal (move between categories).
+
+   Word modal now carries an optional verb_class field (godan/
+   ichidan/irregular), shown only when POS = verb — feeds the
+   conjugation cache in data.js. Toggled live if POS changes while
+   the modal is open.
    ============================================================ */
 const Vocab = (() => {
 
@@ -22,7 +27,34 @@ const Vocab = (() => {
      lives outside the word list for this reason). */
   function makeSortable(container, itemSel, handleSel, onCommit) {
     if (!container) return;
-    let drag = null;
+    let drag = null, lastY = 0, raf = 0;
+    const EDGE = 72, SPEED = 12;   // px-from-viewport-edge hot zone / max px per frame
+
+    const items = () => [...container.querySelectorAll(':scope > ' + itemSel)];
+
+    // Re-slot the dragged item against siblings at the current pointer Y.
+    // Shared by pointermove and the autoscroll loop so the item keeps moving
+    // as the viewport scrolls under it.
+    function reslot() {
+      for (const s of items()) {
+        if (s === drag) continue;
+        const r = s.getBoundingClientRect();
+        if (lastY < r.top + r.height / 2) { container.insertBefore(drag, s); return; }
+      }
+      container.appendChild(drag);
+    }
+
+    // Auto-scroll while the pointer sits near the top/bottom edge — without this
+    // a drop target off-screen on a small viewport is simply unreachable.
+    function autoscroll() {
+      if (!drag) return;
+      const h = window.innerHeight;
+      let dy = 0;
+      if (lastY < EDGE)          dy = -Math.ceil((EDGE - lastY) / EDGE * SPEED);
+      else if (lastY > h - EDGE) dy =  Math.ceil((lastY - (h - EDGE)) / EDGE * SPEED);
+      if (dy) { window.scrollBy(0, dy); reslot(); }
+      raf = requestAnimationFrame(autoscroll);
+    }
 
     container.addEventListener('pointerdown', e => {
       const handle = e.target.closest(handleSel);
@@ -30,29 +62,20 @@ const Vocab = (() => {
       const item = handle.closest(itemSel);
       if (!item) return;
       e.preventDefault();
-      drag = item;
+      drag = item; lastY = e.clientY;
       item.classList.add('sorting');
       try { handle.setPointerCapture(e.pointerId); } catch {}
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
+      raf = requestAnimationFrame(autoscroll);
     });
 
-    const items = () => [...container.querySelectorAll(':scope > ' + itemSel)];
-
-    function move(e) {
-      if (!drag) return;
-      const y = e.clientY;
-      for (const s of items()) {
-        if (s === drag) continue;
-        const r = s.getBoundingClientRect();
-        if (y < r.top + r.height / 2) { container.insertBefore(drag, s); return; }
-      }
-      container.appendChild(drag);
-    }
+    function move(e) { if (!drag) return; lastY = e.clientY; reslot(); }
 
     function up() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
       if (!drag) return;
       drag.classList.remove('sorting');
       const order = items().map(el => el.dataset.id || el.dataset.cat);
@@ -80,7 +103,11 @@ const Vocab = (() => {
   function renderTOC() {
     const toc = document.getElementById('toc');
     const cats = DB.categories();
-    toc.innerHTML = cats.map((c, i) => `<a href="#cat-${i}">${esc(c)}</a>`).join('');
+    // Buttons, not <a href="#cat-N">: fragment anchors push a null-state history
+    // entry (Back then falls through to hub) and the WebView can intercept the
+    // href as a navigation. We scroll programmatically in bind() instead.
+    toc.innerHTML = cats.map((c, i) =>
+      `<button type="button" data-jump="cat-${i}">${esc(c)}</button>`).join('');
   }
 
   function wordRow(w) {
@@ -173,6 +200,20 @@ const Vocab = (() => {
       .join('');
   }
 
+  // Verb-class field only makes sense for pos==='verb' — toggled live so
+  // switching POS while the modal is open doesn't leave a stale field
+  // showing (or a verb hiding its class picker).
+  //
+  // Driven via inline style, not the `hidden` attribute: .fld has its own
+  // `display: block` rule in styles.css, which — same origin, same
+  // specificity as the UA's `[hidden]{display:none}` — is not guaranteed
+  // to lose that fight (author-stylesheet rules take precedence over the
+  // UA stylesheet regardless of specificity). Inline style always wins
+  // over both, so this sidesteps the ambiguity instead of relying on it.
+  function syncVerbClassVisibility() {
+    $('fldVerbClass').style.display = $('wPos').value === 'verb' ? '' : 'none';
+  }
+
   function openAdd(cat) {
     $('modalWordTitle').textContent = t('word.newTitle');
     $('wId').value = '';
@@ -180,10 +221,24 @@ const Vocab = (() => {
     $('wReading').value = '';
     $('wTrans').value = '';
     $('wPos').value = DB.getLastPos();     // remember last-used part of speech
+    $('wVerbClass').value = 'godan';
+    syncVerbClassVisibility();
     fillCategorySelect(cat);
     $('btnDeleteWord').hidden = true;
     modal().hidden = false;
     $('wKanji').focus();
+  }
+
+  // Entry point for other views (the sentence checker's unknown-token "add
+  // to dictionary" button) — reuses this exact modal/flow rather than a
+  // second add-word UI. Pre-fills kanji or reading depending on whether the
+  // unrecognized text contains kanji; defaults to the first existing
+  // category (same constraint the rest of the app already has: a category
+  // must exist before a word can be added).
+  function openAddWithText(text) {
+    openAdd(DB.categories()[0]);
+    if (DB.kanjiOf(text).length > 0) $('wKanji').value = text;
+    else $('wReading').value = text;
   }
 
   function openEdit(id) {
@@ -195,6 +250,8 @@ const Vocab = (() => {
     $('wReading').value = w.reading;
     $('wTrans').value = w.translation;
     $('wPos').value = w.pos || '';
+    $('wVerbClass').value = w.verb_class || 'godan';
+    syncVerbClassVisibility();
     fillCategorySelect(w.category);
     $('btnDeleteWord').hidden = false;
     modal().hidden = false;
@@ -205,12 +262,14 @@ const Vocab = (() => {
   function submitWord(e) {
     e.preventDefault();
     const id = $('wId').value;
+    const pos = $('wPos').value;
     const data = {
       kanji:       $('wKanji').value,
       reading:     $('wReading').value,
       translation: $('wTrans').value,
-      pos:         $('wPos').value,
-      category:    $('wCategory').value
+      pos,
+      category:    $('wCategory').value,
+      verb_class:  pos === 'verb' ? $('wVerbClass').value : undefined
     };
     if (!data.kanji && !data.reading && !data.translation) return;
     DB.setLastPos(data.pos);
@@ -257,6 +316,14 @@ const Vocab = (() => {
       DB.reorderCategories(order); render();
     });
 
+    // TOC jump — programmatic scroll (see renderTOC). #toc is stable, bind once.
+    document.getElementById('toc').addEventListener('click', e => {
+      const b = e.target.closest('[data-jump]');
+      if (!b) return;
+      const sec = document.getElementById(b.dataset.jump);
+      if (sec) sec.scrollIntoView({ block: 'start' });   // .cat scroll-margin-top clears the topbar
+    });
+
     document.getElementById('formAddCat').addEventListener('submit', e => {
       e.preventDefault();
       const inp = document.getElementById('inpNewCat');
@@ -277,6 +344,7 @@ const Vocab = (() => {
     document.getElementById('formWord').addEventListener('submit', submitWord);
     document.getElementById('btnCancelWord').addEventListener('click', closeModal);
     document.getElementById('btnDeleteWord').addEventListener('click', removeWord);
+    document.getElementById('wPos').addEventListener('change', syncVerbClassVisibility);
 
     document.getElementById('btnCloseDetail').addEventListener('click', closeDetail);
     document.getElementById('detailBody').addEventListener('click', e => {
@@ -287,5 +355,5 @@ const Vocab = (() => {
       .forEach(m => m.addEventListener('click', e => { if (e.target === m) m.hidden = true; }));
   }
 
-  return { render, bind };
+  return { render, bind, openAddWithText };
 })();

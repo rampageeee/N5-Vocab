@@ -27,6 +27,9 @@
   --silver:    #9ca3af;
   --gold:      #d4af37;
 
+  --check-conj:    #a8681f;
+  --check-unknown: #3d6b8a;
+
   --shadow: 0 2px 8px rgba(0,0,0,.08);
 }
 
@@ -49,6 +52,9 @@
   --bronze:    #d99a5c;
   --silver:    #c3c8d0;
   --gold:      #ecd06b;
+
+  --check-conj:    #e0a94f;
+  --check-unknown: #6fa8c9;
 
   --shadow: 0 2px 10px rgba(0,0,0,.4);
 }
@@ -137,12 +143,13 @@ body {
 
 /* ============================================================ TOC */
 .toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.3rem; }
-.toc a {
+.toc a, .toc button {
   font-family: "Noto Sans JP", system-ui, sans-serif;
   color: var(--kanji); text-decoration: none;
   background: var(--surface-2); border: 1px solid var(--border);
   padding: .3rem .65rem; border-radius: 999px; font-size: .95rem;
   overflow-wrap: anywhere;
+  -webkit-appearance: none; appearance: none; cursor: pointer;
 }
 .toc:empty { display: none; }
 
@@ -454,7 +461,7 @@ body {
   touch-action: none; overflow: hidden;
 }
 .kd-canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-#kdInk { z-index: 3; } #kdRef { z-index: 2; } #kdGuide { z-index: 1; }
+#kdInk, #knInk { z-index: 3; } #kdRef, #knRef { z-index: 2; } #kdGuide, #knGuide { z-index: 1; }
 
 .kd-hint { text-align: center; color: var(--text-dim); font-size: .85rem; margin-top: .6rem; min-height: 1.2rem; }
 .kd-result { text-align: center; font-size: 1rem; margin: .3rem 0; min-height: 1.4rem; }
@@ -489,6 +496,137 @@ body {
   .kd-stage { flex-direction: row; align-items: flex-start; justify-content: center; }
   .kd-cheat { align-self: stretch; max-width: 300px; }
 }
+
+/* ============================================================ KANA CHART
+   Grid/tiles deliberately reuse .kgrid/.ktile from the kanji view (same
+   look: character + status) rather than a parallel set of near-identical
+   rules that could drift from them. Only the group wrapper is new. */
+.kana-group { margin-bottom: 1.6rem; }
+.kana-group__title {
+  font-size: .8rem; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: .04em; margin: 0 0 .6rem;
+}
+
+/* ============================================================ GRAMMAR TAB
+   Reference: TOC + card list, same shape as Vocab's category browsing.
+   Deliberately its own classes (not .cat) — .cat's heading is tinted with
+   --kanji, which is a vocab-specific convention this tab doesn't need. */
+.gram-legend { margin-bottom: 1rem; }
+.gram-legend__toggle {
+  background: none; border: none; color: var(--text-dim); font-size: .85rem;
+  cursor: pointer; padding: 0;
+}
+.gram-legend__body {
+  margin-top: .6rem; padding: .7rem .8rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  display: grid; grid-template-columns: auto 1fr; gap: .3rem .8rem; font-size: .82rem;
+}
+.gram-legend__row code {
+  color: var(--text); background: var(--surface); border-radius: 4px; padding: 0 .3rem;
+}
+.gram-legend__row span { color: var(--text-dim); }
+
+.gram-group {
+  margin-bottom: 1.6rem; padding: .9rem 1rem 1.1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  scroll-margin-top: 64px;
+}
+.gram-group__title { font-size: 1.05rem; font-weight: 700; color: var(--text); margin: 0 0 .6rem; }
+.gram-callout {
+  font-size: .85rem; color: var(--text-dim); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: .6rem .8rem; margin-bottom: .7rem;
+}
+.gram-rule { padding: .7rem 0; border-top: 1px solid var(--border); }
+.gram-rule:first-of-type { border-top: none; padding-top: 0; }
+.gram-rule__head { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
+.gram-rule__id {
+  font-size: .7rem; font-weight: 700; color: var(--text-dim); background: var(--surface-2);
+  border-radius: 6px; padding: .1rem .4rem; font-variant-numeric: tabular-nums;
+}
+.gram-rule__final { font-size: .68rem; color: var(--text-dim); font-style: italic; }
+.gram-rule__pattern { font-size: .92rem; color: var(--text); margin-bottom: .3rem; overflow-wrap: anywhere; }
+.gram-rule__gloss { font-size: .88rem; color: var(--text-dim); margin-bottom: .4rem; }
+.gram-example { margin-bottom: .3rem; }
+.gram-example__jp { font-size: .95rem; color: var(--text); }
+.gram-example__breakdown { font-size: .82rem; color: var(--text-dim); }
+.gram-notes { margin: .6rem 0 0; padding-left: 1.1rem; font-size: .82rem; color: var(--text-dim); }
+.gram-notes li { margin-bottom: .3rem; }
+
+.gram-mine-card {
+  padding: .7rem .8rem; margin-bottom: .6rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.gram-mine-card__name { font-weight: 600; color: var(--text); margin-bottom: .2rem; }
+.gram-mine-card__structure { font-size: .9rem; color: var(--reading); margin-bottom: .2rem; overflow-wrap: anywhere; }
+.gram-mine-card__example { font-size: .92rem; color: var(--text); margin-bottom: .2rem; overflow-wrap: anywhere; }
+.gram-mine-card__note { font-size: .85rem; color: var(--text-dim); }
+.gram-mine-card__actions { margin-top: .5rem; }
+
+/* ============================================================ SENTENCE CHECKER
+   chk-output/chk-detail/chk-corrected intentionally have NO explicit
+   `display` rule — they rely on the `hidden` attribute alone, which only
+   works reliably when nothing else on the element sets `display` (see
+   the note on .fld/verb-class in vocabulary.js for why that combination
+   can silently fail). Kept plain on purpose. */
+.chk-form { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.2rem; }
+.chk-form textarea {
+  width: 100%; padding: .6rem .7rem; font-size: 1rem;
+  font-family: "Noto Sans JP", system-ui, sans-serif;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; resize: vertical;
+}
+.chk-sentence {
+  font-size: 1.3rem; line-height: 2.1; padding: 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  overflow-wrap: anywhere;
+}
+.chk-tok { cursor: pointer; border-radius: 4px; }
+.chk-tok--particle-err {
+  color: var(--danger); text-decoration: underline wavy var(--danger); text-underline-offset: 3px;
+}
+.chk-tok--conj {
+  color: var(--check-conj); text-decoration: underline dashed var(--check-conj); text-underline-offset: 3px;
+}
+.chk-tok--unknown {
+  color: var(--check-unknown); text-decoration: underline dotted var(--check-unknown); text-underline-offset: 3px;
+}
+.chk-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-left: 2px; font-size: .7rem; line-height: 1;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text-dim); cursor: pointer; vertical-align: middle;
+}
+.chk-detail {
+  margin-top: .8rem; padding: .8rem .9rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  font-size: .9rem; color: var(--text);
+}
+.chk-detail .tool-btn { margin-top: .6rem; }
+.chk-corrected {
+  margin-top: 1rem; padding: .8rem .9rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+}
+.chk-corrected__label {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-dim); margin-bottom: .4rem;
+}
+.chk-corrected__text { font-size: 1.15rem; }
+.chk-corrected__note { margin-top: .5rem; font-size: .82rem; color: var(--text-dim); }
+
+/* ============================================================ REVIEW (§3.7)
+   .fc-progress-num and .fc-answer are reused directly from flashcards —
+   same "count + answer row" shape, no need for a parallel set of rules. */
+.rev-card {
+  padding: 1rem; margin-bottom: .8rem; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+}
+.rev-sentence { font-size: 1.3rem; margin-bottom: .6rem; overflow-wrap: anywhere; }
+.rev-rule { font-size: .85rem; color: var(--text-dim); margin-bottom: .4rem; }
+.rev-streak { font-size: .78rem; color: var(--text-dim); }
+.rev-feedback { min-height: 1.4rem; font-size: .95rem; text-align: center; margin-top: .6rem; }
+.rev-feedback--ok       { color: #2f8f4e; }
+.rev-feedback--resolved { color: var(--gold); font-weight: 700; }
+.rev-feedback--bad      { color: var(--danger); }
 
 /* ============================================================ DESKTOP */
 @media (min-width: 620px) {
