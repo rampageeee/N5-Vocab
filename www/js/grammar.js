@@ -39,8 +39,8 @@ const Grammar = (() => {
     </div>`;
   }
 
-  function lessonHTML(it) {
-    return `<article class="lesson">
+  function lessonHTML(it, id) {
+    return `<article class="lesson" id="${id}">
       <header class="lesson__head">
         <span class="lesson__particle jp">${esc(it.particle)}</span>
         <span class="lesson__job">${esc(it.job)}${it.say ? ` <em>(${esc(it.say)})</em>` : ''}</span>
@@ -51,16 +51,30 @@ const Grammar = (() => {
     </article>`;
   }
 
+  /* TOC is one button per PARTICLE, not per stage. The first version
+     labelled each button with every particle in a stage joined together
+     ("の から まで …") and jumped to the stage heading, so tapping の landed
+     you at the top of a block containing の somewhere below — you still had
+     to hunt. One particle, one button, one destination. Stage headings stay
+     in the body as dividers; they're orientation, not navigation. */
   function renderLearn() {
     const data = window.GRAMMAR_LESSONS || [];
-    el('gramLearnToc').innerHTML = data.map((g, i) =>
-      `<button type="button" data-jump="lesson-${i}">${esc(g.items.map(x => x.particle).join(' '))}</button>`).join('');
-    el('gramLearnBody').innerHTML = data.map((g, i) => `
+    const toc = [];
+    const body = data.map((g, i) => {
+      const items = g.items.map((it, j) => {
+        const id = `lesson-${i}-${j}`;
+        toc.push(`<button type="button" class="jp" data-jump="${id}">${esc(it.particle)}</button>`);
+        return lessonHTML(it, id);
+      }).join('');
+      return `
       <section class="lesson-stage" id="lesson-${i}">
         <h2 class="lesson-stage__title">${esc(g.stage)}</h2>
         <p class="lesson-stage__blurb">${esc(g.blurb)}</p>
-        ${g.items.map(lessonHTML).join('')}
-      </section>`).join('');
+        ${items}
+      </section>`;
+    }).join('');
+    el('gramLearnToc').innerHTML = toc.join('');
+    el('gramLearnBody').innerHTML = body;
   }
 
   // ---- Reference pane ---------------------------------------

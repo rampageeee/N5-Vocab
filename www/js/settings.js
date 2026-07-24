@@ -187,17 +187,113 @@ const Settings = (() => {
     renderCategories();
   }
 
-  // ---- export / import -------------------------------------
-  function exportData() {
-    const blob = new Blob([DB.exportJSON()], { type: 'application/json' });
+  /* ---- export ------------------------------------------------
+     `a.download` + a blob: URL is a BROWSER mechanism. An Android
+     WebView has no download manager wired to it, so inside the APK
+     a.click() did nothing at all — silently. Worse, markExport() ran
+     regardless, so the "last backup" line in Settings updated and
+     reported a backup that did not exist.
+
+     Native export now does TWO things, in this order:
+
+       1. Writes a permanent local copy to the public Documents
+          folder. This is the actual backup — it survives uninstall,
+          it is visible in any file manager, and it needs no cloud
+          account. On Android 11+ an app may write to Documents for
+          files it created itself, so no runtime permission is asked.
+          Android 10 needs android:requestLegacyExternalStorage="true"
+          on the <application> tag in AndroidManifest.xml; without it
+          this write fails and the share sheet carries the export on
+          its own.
+
+       2. Writes a second copy to cache and opens the share sheet.
+          The cache copy exists because Share hands the file to
+          another app through the FileProvider, whose configured
+          paths cover app storage — a public Documents URI is
+          outside them and would throw.
+
+     No clipboard fallback. navigator.clipboard.writeText on a
+     multi-megabyte string in an Android WebView can hang without
+     ever rejecting, which froze the app on a button whose entire
+     job is to be trustworthy. A backup that reports failure is
+     strictly better than one that hangs.
+
+     Requires:  npm i @capacitor/filesystem @capacitor/share
+                npx cap sync
+
+     Honesty note: Android does not reliably report share-sheet
+     cancellation — Share.share() can resolve normally when the user
+     backs out. So markExport() is driven by the LOCAL write, which
+     is verifiable, and only falls back to the share result when the
+     local write failed. */
+  function backupName() {
+    return `n5-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  }
+
+  function exportedOK() {
+    DB.markExport();
+    renderBackup();
+    App.refreshExportStatus();
+  }
+
+  async function exportNative(json, name, FS, Share) {
+    let localUri = null, localErr = null;
+    try {
+      const r = await FS.writeFile({
+        path: name, data: json, directory: 'DOCUMENTS', encoding: 'utf8'
+      });
+      localUri = r.uri;
+    } catch (e) {
+      localErr = e && e.message ? e.message : String(e);
+    }
+
+    let shareUri = null;
+    try {
+      const c = await FS.writeFile({
+        path: name, data: json, directory: 'CACHE', encoding: 'utf8'
+      });
+      shareUri = c.uri;
+    } catch { /* share is the optional half — a local copy alone is a backup */ }
+
+    if (localUri) exportedOK();
+
+    if (shareUri && Share && typeof Share.share === 'function') {
+      try {
+        await Share.share({ title: name, files: [shareUri], dialogTitle: t('export.share') });
+        if (!localUri) exportedOK();
+      } catch { /* user dismissed, or no target app — the local copy still stands */ }
+    }
+
+    if (localUri) alert(t('export.savedLocal', 'Documents/' + name));
+    else if (shareUri) alert(t('export.localFailed', localErr || ''));
+    else throw new Error(localErr || 'write failed');
+  }
+
+  function exportWeb(json, name) {
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `n5-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
-    DB.markExport();
-    renderBackup();
+    exportedOK();
+  }
+
+  async function exportData() {
+    const json = DB.exportJSON();
+    const name = backupName();
+    const P = (window.Capacitor && window.Capacitor.Plugins) || {};
+    const native = !!(window.Capacitor && window.Capacitor.isNativePlatform
+      && window.Capacitor.isNativePlatform());
+
+    try {
+      if (native && P.Filesystem) await exportNative(json, name, P.Filesystem, P.Share);
+      else if (!native) exportWeb(json, name);
+      else throw new Error('Filesystem plugin not installed');
+    } catch (err) {
+      alert(t('export.error', err && err.message ? err.message : String(err)));
+    }
   }
 
   function importData(file) {

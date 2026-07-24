@@ -73,10 +73,27 @@ const Checker = (() => {
     ALL_PARTICLES.forEach(p => add(p, { kind: 'particle', particle: p }));
     COPULA_ENDINGS.forEach(c => add(c, { kind: 'copula' }));
 
+    /* A verb whose class hasn't been settled in the Settings check still has
+       a `forms` object — regenerateForms() falls back to inferVerbClass()
+       and generates SOMETHING. For る-verbs that guess is a coin flip that
+       spelling alone cannot decide (帰る・走る・入る are godan; 食べる・見る・
+       起きる are ichidan, and they look identical), so an unaudited verb's
+       cache can hold 食べります / 食べって / 食べらない.
+
+       The drill already refuses to touch those words. The checker must
+       refuse too, and for a sharper reason: these forms feed the tier-1
+       lexicon, so a fabricated form gets RECOGNISED AS CORRECT while the
+       real one (食べます) falls through to tier 2 and is reported as a
+       mistake. That is the checker teaching the wrong conjugation.
+
+       Headword only until she clears the verb check. Tier 2 still resolves
+       real conjugations of these verbs via findWordByStem, so they aren't
+       invisible — just no longer authoritative. */
     DB.allWords().forEach(w => {
       const hw = w.kanji || w.reading;
       if (hw) add(hw, { kind: 'word', wordId: w.id, form: 'plain' });
-      if (w.forms) {
+      const trusted = w.pos !== 'verb' || w.class_confirmed;
+      if (w.forms && trusted) {
         Object.entries(w.forms).forEach(([form, surface]) => {
           if (surface) add(surface, { kind: 'word', wordId: w.id, form });
         });
@@ -249,7 +266,7 @@ const Checker = (() => {
        itself lists.
      - The INNER particle's (に's) own AFTER-check: に's "what comes
        next" is now は itself (satisfies nothing), not the eventual
-       predicate — nextSkippingStack() looks past a stacked は/も to
+       predicate — the after-side scan looks past a stacked は/も to
        find the real content on the other side of it.
    Both fixes are required together; testing the first alone still
    flagged 学校には行きません, which is what surfaced the second.
@@ -274,21 +291,47 @@ const Checker = (() => {
    ============================================================ */
 const ParticleChecker = (() => {
 
+  /* `afterScan` — WHY this exists.
+
+     The first version tested every requirement against the single
+     IMMEDIATELY adjacent token. For a requirement of 'noun' that is right:
+     の and や really do bind to the noun touching them. For 'predicate' and
+     'verb' it is wrong, and wrong in the most damaging possible way.
+
+     この季節は春です  →  は, then 春 (noun), then です (copula).
+     The token touching は is a noun, not a predicate, so は was flagged —
+     and so was わたしは学生です, and every other [N]は[N]です sentence.
+     That is the single most common sentence pattern at N5 and it has been
+     reported as an error since this checker landed.
+
+     A predicate is a SPAN (noun + copula, adverb + verb, object + particle
+     + verb), not a token. は does not require a predicate next to it; it
+     requires its clause to have one somewhere ahead. So requirements that
+     name 'predicate' or 'verb' scan forward to the end of the clause, and
+     only requirements that name 'noun' alone stay adjacent — which is what
+     keeps 静かの人 catchable (な-adjective adjacent to の, no noun there).
+
+     Consequence, accepted deliberately: a badly-placed particle whose
+     required category happens to appear later in the clause is no longer
+     caught. Under-flagging is the correct failure mode for a checker a
+     beginner trusts — a false "this is wrong" on a correct sentence
+     teaches her the wrong thing, a missed error teaches her nothing.
+  */
   const PARTICLE_RULES = {
-    'の':   { before: ['noun'],             after: ['noun'] },
-    'は':   { before: ['noun'],             after: ['predicate'] },
-    'が':   { before: ['noun'],             after: ['predicate'] },
-    'を':   { before: ['noun'],             after: ['verb'] },
-    'に':   { before: ['noun'],             after: ['predicate'] },
-    'で':   { before: ['noun'],             after: ['verb'] },
-    'と':   { before: ['noun'],             after: ['noun', 'verb'] },
-    'も':   { before: ['noun'],             after: ['predicate'] },
-    'から': { before: ['noun', 'predicate'], after: null },   // after is predicate/CL — CL isn't
-                                                                // locally checkable, so this side
-                                                                // is never flagged (§3.0's own
-                                                                // stated ceiling on this checker)
-    'まで': { before: ['noun'],             after: ['predicate'] },
-    'や':   { before: ['noun'],             after: ['noun'] }
+    'の':   { before: ['noun'],             after: ['noun'],           afterScan: 'adjacent' },
+    'は':   { before: ['noun'],             after: ['predicate'],      afterScan: 'ahead' },
+    'が':   { before: ['noun'],             after: ['predicate'],      afterScan: 'ahead' },
+    'を':   { before: ['noun'],             after: ['verb'],           afterScan: 'ahead' },
+    'に':   { before: ['noun'],             after: ['predicate'],      afterScan: 'ahead' },
+    'で':   { before: ['noun'],             after: ['verb'],           afterScan: 'ahead' },
+    'と':   { before: ['noun'],             after: ['noun', 'verb'],   afterScan: 'ahead' },
+    'も':   { before: ['noun'],             after: ['predicate'],      afterScan: 'ahead' },
+    'から': { before: ['noun', 'predicate'], after: null,              afterScan: 'ahead' },   // after is
+                                                                // predicate/CL — CL isn't locally
+                                                                // checkable, so this side is never
+                                                                // flagged (§3.0's stated ceiling)
+    'まで': { before: ['noun'],             after: ['predicate'],      afterScan: 'ahead' },
+    'や':   { before: ['noun'],             after: ['noun'],           afterScan: 'adjacent' }
   };
 
   // は/も stack after these five without needing a noun immediately to
@@ -296,6 +339,18 @@ const ParticleChecker = (() => {
   // pass through the same token stream, so this doesn't skip verifying
   // it, only avoids double-penalizing は/も for the inner particle's job.
   const STACKS_UNDER = ['に', 'で', 'と', 'から', 'まで'];
+
+  // Where a clause stops for the purposes of the forward scan. 、 counts:
+  // 忙しいから、行きません is two clauses, and letting the scan run past the
+  // comma would let the second clause's predicate satisfy the first's
+  // particles.
+  const CLAUSE_END = /[。、！？!?,.]/;
+
+  // Verb forms that cannot be followed by だ/です. Deliberately the three
+  // that are unambiguous — the い-shaped verb forms (たい, ない, たかった)
+  // take です perfectly well (食べたいです), so they are not listed and the
+  // check never fires on them.
+  const NO_COPULA_AFTER = new Set(['plain', 'masu', 'masen']);
 
   function tokenCatSet(tok) {
     if (!tok || tok.type === 'unknown' || tok.type === 'skip') return null;   // inconclusive — never flag from this side
@@ -309,6 +364,24 @@ const ParticleChecker = (() => {
     if (tok.posCat === 'verb')    { cats.add('verb'); cats.add('predicate'); }
     if (tok.posCat === 'adjective') cats.add('predicate');
     return cats;   // posCat 'other' (adverb/counter/expression) contributes nothing, on purpose
+  }
+
+  // Union of every category available between this particle and the end of
+  // its clause. Returns null (inconclusive, never flagged) when the only
+  // thing ahead was unknown to the tokenizer — an unrecognised word is not
+  // evidence of a mistake.
+  function aheadCatSet(tokens, i) {
+    const cats = new Set();
+    let sawUnknown = false;
+    for (let j = i + 1; j < tokens.length; j++) {
+      const tk = tokens[j];
+      if (tk.type === 'skip') { if (CLAUSE_END.test(tk.text)) break; continue; }
+      if (tk.type === 'unknown') { sawUnknown = true; continue; }
+      const c = tokenCatSet(tk);
+      if (c) c.forEach(x => cats.add(x));
+    }
+    if (cats.size === 0 && sawUnknown) return null;
+    return cats;
   }
 
   function requirementMet(catSet, requirement) {
@@ -334,23 +407,6 @@ const ParticleChecker = (() => {
       return tokens[j];
     }
     return null;
-  }
-
-  // For に/で/と/から/まで specifically: if は or も immediately follows
-  // (legitimately stacking on top, per WA-1/MO-1's own text), the real
-  // "after" content is beyond that stack, not the stacking particle
-  // itself — a bare は/も token satisfies neither noun nor predicate, so
-  // without this, EVERY stacked sentence (学校には行きません, the
-  // rulebook's own example) would wrongly flag the inner particle.
-  function nextSkippingStack(tokens, i) {
-    let j = i + 1;
-    while (j < tokens.length && tokens[j].type === 'skip') j++;
-    if (j < tokens.length && tokens[j].type === 'particle'
-        && (tokens[j].particle === 'は' || tokens[j].particle === 'も')) {
-      j++;
-      while (j < tokens.length && tokens[j].type === 'skip') j++;
-    }
-    return j < tokens.length ? tokens[j] : null;
   }
 
   function suggestReplacements(particleUsed, prevCats, nextCats) {
@@ -383,9 +439,9 @@ const ParticleChecker = (() => {
       if (!rule) return;   // outside the coarse-enforced set — recognized, never checked
 
       const prev = adjacentToken(tokens, i, -1);
-      const next = STACKS_UNDER.includes(tok.particle) ? nextSkippingStack(tokens, i) : adjacentToken(tokens, i, 1);
+      const next = adjacentToken(tokens, i, 1);
       let prevCats = tokenCatSet(prev);
-      const nextCats = tokenCatSet(next);
+      const nextCats = rule.afterScan === 'ahead' ? aheadCatSet(tokens, i) : tokenCatSet(next);
 
       if ((tok.particle === 'は' || tok.particle === 'も')
           && prev && prev.type === 'particle' && STACKS_UNDER.includes(prev.particle)) {
@@ -409,10 +465,44 @@ const ParticleChecker = (() => {
     return violations;
   }
 
-  function analyze(sentence) {
-    const tokens = Checker.tokenize(sentence);
-    return { tokens, violations: checkParticles(tokens) };
+  /* Copula directly after a plain or ます-form verb — 走るです, 食べますです.
+     Narrow on purpose. It exists because the particle rules alone can't
+     see it: 雪は走るですね tokenises as [noun][は][verb][copula][ね], and
+     は's requirement is satisfied by the verb, so nothing else in this
+     file has any reason to look at the です.
+
+     This is a structural error, not a semantic one. Nothing here can
+     judge whether 雪 can 走る — a category checker never will. Only the
+     shape "verb + copula" is claimed. */
+  function checkCopula(tokens) {
+    const violations = [];
+    tokens.forEach((tok, i) => {
+      if (tok.type !== 'copula') return;
+      const prev = adjacentToken(tokens, i, -1);
+      if (!prev || prev.type !== 'known') return;
+      if (prev.posCat !== 'verb') return;
+      if (!NO_COPULA_AFTER.has(prev.form)) return;
+      const w = DB.getWord(prev.wordId);
+      const polite = w && w.forms ? w.forms.masu : null;
+      const v = {
+        type: 'copula-violation',
+        after: prev.text,
+        // Suggest the polite form of the verb standing alone, which is what
+        // the writer almost certainly meant by attaching です to it.
+        candidates: polite && prev.form === 'plain' ? [polite] : [],
+        correctToken: null   // the fix replaces the VERB, not this token — never auto-substituted
+      };
+      violations.push(v);
+      (tok.violations || (tok.violations = [])).push(v);
+    });
+    return violations;
   }
 
-  return { checkParticles, analyze };
+  function analyze(sentence) {
+    const tokens = Checker.tokenize(sentence);
+    const violations = checkParticles(tokens).concat(checkCopula(tokens));
+    return { tokens, violations };
+  }
+
+  return { checkParticles, checkCopula, analyze };
 })();

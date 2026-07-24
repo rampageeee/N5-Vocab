@@ -52,7 +52,15 @@ const Flash = (() => {
     return a;
   }
 
-  // ---- render on entering the view -------------------------
+  /* The setup block (category + the two filters) stays on screen for the
+     whole session. It used to be hidden on start, which meant the only way
+     out of a running deck was the top-bar Home button, and a filter could
+     only ever be changed between sessions.
+
+     Live now: changing the category, or either filter, rebuilds the deck
+     from scratch. That resets position — the filters change which words are
+     in the pool, so continuing at card 7 of a deck that no longer exists
+     would be meaningless. */
   function render() {
     const sel = el('fcCategory');
     const cats = DB.categories();
@@ -61,10 +69,20 @@ const Flash = (() => {
     const f = DB.getFlashFilters();
     el('fcFilterToday').checked  = f.hideScoredToday;
     el('fcFilterStarred').checked = f.hideStarred;
-    el('fcSetup').hidden = false;
     el('fcStage').hidden = true;
+    el('fcStop').hidden = true;
+    el('fcList').hidden = false;
     el('fcRestart').hidden = true;
     renderList();
+  }
+
+  const running = () => !el('fcStage').hidden;
+
+  // A filter toggled mid-session re-runs start() against the category
+  // already selected; between sessions it just persists the setting.
+  function onFilterChange(key, on) {
+    DB.setFlashFilter(key, on);
+    if (running()) start();
   }
 
   // Deck filters, read once at session start (§ see DB.getFlashFilters).
@@ -78,18 +96,24 @@ const Flash = (() => {
     return { words, total, filtered: total > 0 && words.length === 0 };
   }
 
-  // ---- session start (fired by category change) ------------
+  // ---- session start (fired by category change or a filter toggle) ----
   function start() {
     const cat = el('fcCategory').value;
     if (!cat) return;
     const { words, total, filtered } = buildDeck(cat);
-    if (total === 0)  { alert(t('flash.emptyCat')); el('fcCategory').value = ''; return; }
-    if (filtered)     { alert(t('flash.filteredEmpty')); el('fcCategory').value = ''; return; }
+    if (total === 0)  { alert(t('flash.emptyCat'));      endSession(); return; }
+    if (filtered)     { alert(t('flash.filteredEmpty')); endSession(); return; }
     deck = shuffle(words.map(w => w.id));
     pos = 0;
-    el('fcSetup').hidden = true;
     el('fcStage').hidden = false;
+    el('fcStop').hidden = false;
     el('fcRestart').hidden = true;
+    // The progress list carries every word's reading — an open cheat sheet
+    // sitting under the card being tested. Collapsed AND hidden for the
+    // duration; it comes back when the session ends.
+    listOpen = false;
+    el('fcList').hidden = true;
+    renderList();
     showCard();
   }
 
@@ -188,7 +212,8 @@ const Flash = (() => {
 
   function endSession() {
     el('fcStage').hidden = true;
-    el('fcSetup').hidden = false;
+    el('fcStop').hidden = true;
+    el('fcList').hidden = false;
     el('fcRestart').hidden = true;
     el('fcCategory').value = '';   // reset so re-picking fires change again
     renderList();
@@ -242,10 +267,11 @@ const Flash = (() => {
   // ---- bind ------------------------------------------------
   function bind() {
     el('fcCategory').addEventListener('change', start);
+    el('fcStop').addEventListener('click', endSession);
     el('fcFilterToday').addEventListener('change',
-      e => DB.setFlashFilter('hideScoredToday', e.target.checked));
+      e => onFilterChange('hideScoredToday', e.target.checked));
     el('fcFilterStarred').addEventListener('change',
-      e => DB.setFlashFilter('hideStarred', e.target.checked));
+      e => onFilterChange('hideStarred', e.target.checked));
     el('flashcard').addEventListener('click', flip);
     // Suppressing the default pointerdown action stops the button taking
     // focus, so the input never blurs and the soft keyboard never animates.

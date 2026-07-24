@@ -45,9 +45,19 @@ const Sentences = (() => {
       : t('checker.detailConjNone');
   }
 
+  // A copula violation sits on the です/だ token but names the verb in front
+  // of it, because that is the word that has to change.
+  function detailForCopula(tok) {
+    const v = tok.violations[0];
+    let msg = t('checker.copulaAfterVerb', v.after);
+    if (v.candidates.length) msg += ' ' + t('checker.tryInstead', v.candidates.join('・'));
+    return msg;
+  }
+
   function detailFor(tok) {
     if (tok.type === 'unknown') return t('checker.detailUnknown');
     if (tok.type === 'conjugation-error') return detailForConj(tok);
+    if (tok.type === 'copula' && tok.violations && tok.violations.length) return detailForCopula(tok);
     if (tok.type === 'particle' && tok.violations && tok.violations.length) return detailForParticle(tok);
     if ((tok.type === 'known' || tok.type === 'copula') && tok.wordId) {
       const w = DB.getWord(tok.wordId);
@@ -60,7 +70,7 @@ const Sentences = (() => {
   function tokenClass(tok) {
     if (tok.type === 'unknown') return 'chk-tok chk-tok--unknown';
     if (tok.type === 'conjugation-error') return 'chk-tok chk-tok--conj';
-    if (tok.type === 'particle' && tok.violations && tok.violations.length) return 'chk-tok chk-tok--particle-err';
+    if (tok.violations && tok.violations.length) return 'chk-tok chk-tok--particle-err';
     return 'chk-tok';
   }
 

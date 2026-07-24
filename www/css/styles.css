@@ -61,6 +61,23 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* The UA's `[hidden] { display: none }` lives in the user-agent sheet, so ANY
+   author display rule beats it regardless of specificity. `.fc-setup` and
+   `.fc-stage` both declare `display: flex`, which meant the flashcard setup
+   block (category select + the two skip filters) and the running card were
+   drawn at the same time, permanently — `el('fcSetup').hidden = true` had no
+   visible effect. The Drill view shares both classes and had it too.
+
+   That is also why the skip filters "did nothing": they stayed on screen
+   during a session, so they were being ticked AFTER the deck was already
+   built, and re-picking the same category fires no change event to rebuild
+   it. The filter code was correct; it was never being re-run.
+
+   Fixed globally rather than per-class — .modal[hidden] below was the same
+   bug patched once locally, and the next `display:` rule added to a
+   hideable element would have reintroduced it. */
+[hidden] { display: none !important; }
+
 html {
   background: var(--bg);
   min-height: 100%;
@@ -307,18 +324,23 @@ body {
 .detail__draw-link { margin-top: .5rem; }
 
 /* ============================================================ FLASHCARDS */
-.fc-setup { display: flex; flex-direction: column; gap: .8rem; align-items: center; }
+/* Setup block is pre-session furniture: it should not push the card down
+   the screen. Deliberately tighter than the rest of the app's rhythm. */
+.fc-setup { display: flex; flex-direction: column; gap: .5rem; align-items: center; }
+.fc-pick { display: flex; gap: .4rem; width: 100%; max-width: 320px; align-items: stretch; }
+.fc-pick select { flex: 1 1 auto; min-width: 0; }
+.fc-stop { flex: 0 0 auto; padding: .45rem .7rem; font-size: .85rem; }
 .fc-setup select {
-  width: 100%; max-width: 320px; padding: .6rem;
+  width: 100%; max-width: 320px; padding: .45rem .55rem;
   background: var(--surface); color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px; font-size: 1rem;
+  border: 1px solid var(--border); border-radius: 10px; font-size: .95rem;
 }
-.fc-filters { display: flex; flex-direction: column; gap: .45rem; width: 100%; max-width: 320px; }
+.fc-filters { display: flex; flex-direction: column; gap: .25rem; width: 100%; max-width: 320px; }
 .fc-filter {
-  display: flex; align-items: center; gap: .55rem;
-  font-size: .88rem; color: var(--text-dim); line-height: 1.3; cursor: pointer;
+  display: flex; align-items: center; gap: .45rem;
+  font-size: .76rem; color: var(--text-dim); line-height: 1.25; cursor: pointer;
 }
-.fc-filter input { flex: none; width: 1.05rem; height: 1.05rem; accent-color: var(--kanji); }
+.fc-filter input { flex: none; width: .9rem; height: .9rem; accent-color: var(--kanji); }
 .fc-progress-num { font-size: .8rem; color: var(--text-dim); margin: .5rem 0; text-align: center; }
 
 .fc-stage { display: flex; flex-direction: column; align-items: center; gap: .9rem; }
@@ -701,7 +723,23 @@ body {
    characters first and finished ones behind a fold. The fold defaults
    shut — keeping completed work out of the eyeline is the whole point
    of the split, and the count on the toggle still reports progress. */
-.kgroup { margin-bottom: 1.6rem; }
+.kgroup { margin-bottom: 1.2rem; }
+
+/* #kanjiGrid still carries class="kgrid" in the markup, but it stopped
+   being a grid of tiles when the view moved to grouped sections — its
+   children are now two <section class="kgroup"> blocks. As a 4-column
+   grid it was placing each whole section into ONE 78px column, which
+   squeezed the real tile grids inside them down to a single column: that
+   is the "super long vertical list". Demote the outer container to a
+   plain block; the inner .kgrid elements do the actual laying out. */
+#kanjiGrid { display: block; }
+
+/* Fixed 4 columns on a phone rather than auto-fill, so the two groups
+   stay predictable side by side; wider screens go back to filling. */
+.kgroup .kgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (min-width: 520px) {
+  .kgroup .kgrid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+}
 .kgroup__title {
   font-size: .95rem; font-weight: 600; color: var(--text);
   margin: 0 0 .6rem; padding-bottom: .35rem;

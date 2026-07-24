@@ -125,9 +125,13 @@
     <section class="view" id="view-flashcards">
       <div class="view__head"><h1 class="view__title" data-i18n="flash.title">Flashcards</h1></div>
 
-      <!-- setup: pick category (auto-starts on choice) -->
+      <!-- setup: stays visible for the whole session — picking a different
+           category or changing a filter rebuilds the deck in place -->
       <div class="fc-setup" id="fcSetup">
-        <select id="fcCategory"></select>
+        <div class="fc-pick">
+          <select id="fcCategory"></select>
+          <button class="tool-btn tool-btn--ghost fc-stop" id="fcStop" data-i18n="flash.stop" hidden>End</button>
+        </div>
         <div class="fc-filters">
           <label class="fc-filter">
             <input type="checkbox" id="fcFilterToday">

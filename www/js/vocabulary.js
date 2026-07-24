@@ -281,14 +281,20 @@ const Vocab = (() => {
   // switching POS while the modal is open doesn't leave a stale field
   // showing (or a verb hiding its class picker).
   //
-  // Driven via inline style, not the `hidden` attribute: .fld has its own
-  // `display: block` rule in styles.css, which — same origin, same
-  // specificity as the UA's `[hidden]{display:none}` — is not guaranteed
-  // to lose that fight (author-stylesheet rules take precedence over the
-  // UA stylesheet regardless of specificity). Inline style always wins
-  // over both, so this sidesteps the ambiguity instead of relying on it.
+  // Toggles the `hidden` PROPERTY, not inline display. The previous version
+  // set style.display = '' to reveal the field, which REMOVES an inline
+  // style rather than setting one — so visibility fell back to `.fld
+  // { display: block }` out-cascading the UA's `[hidden]{display:none}`.
+  // That worked, until styles.css gained a global
+  // `[hidden] { display: none !important }` (needed to stop .fc-setup's own
+  // display rule keeping the flashcard filters on screen mid-session). At
+  // that point this field became permanently invisible — nothing an author
+  // rule can do beats !important from the same origin.
+  //
+  // Setting .hidden directly is immune to all of it: there is no cascade
+  // left to lose, and no future display rule can reopen the question.
   function syncVerbClassVisibility() {
-    $('fldVerbClass').style.display = $('wPos').value === 'verb' ? '' : 'none';
+    $('fldVerbClass').hidden = $('wPos').value !== 'verb';
   }
 
   function openAdd(cat) {
