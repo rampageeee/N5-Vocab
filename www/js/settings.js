@@ -54,8 +54,60 @@ const Settings = (() => {
       .setAttribute('content', theme === 'dark' ? '#17161a' : '#f7f5f2');
   }
 
+  /* ---- verb-class audit -------------------------------------
+     Shown ONLY when there's something to decide. Deliberately jargon-free:
+     the two options are labelled with the forms they would actually produce,
+     not with "godan" / "ichidan". Whoever answers has to recognise correct
+     Japanese, not know a grammar term or trust that the app applied it right.
+     The class name rides along dimmed, for reference, never as the question. */
+  const AUDIT_FORMS = ['masu', 'ta', 'te'];   // ます / past / て — enough to tell the classes apart
+
+  function formStrip(w, cls) {
+    const f = DB.previewForms(w, cls);
+    return AUDIT_FORMS.map(k => f[k]).filter(Boolean);
+  }
+
+  function auditCard(w) {
+    const key = DB.inflectionKey(w);
+    const head = `<div class="audit__word">
+        <span class="audit__kanji">${esc(w.kanji || w.reading)}</span>
+        <span class="audit__reading">${esc(w.kanji ? w.reading : '')}</span>
+        <span class="audit__trans">${esc(w.translation)}</span>
+      </div>`;
+
+    // No inflectable ending in either field — nothing to offer a choice
+    // between. Needs the okurigana typed in, not a decision.
+    if (DB.verbAudit(w).state === 'unusable') {
+      return `<div class="audit__card audit__card--broken">${head}
+        <div class="audit__broken">${esc(t('audit.unusable'))}</div></div>`;
+    }
+
+    const opt = cls => {
+      const forms = formStrip(w, cls);
+      if (!forms.length) return '';
+      return `<button class="audit__opt" data-audit="${w.id}" data-cls="${cls}">
+          <span class="audit__forms">${forms.map(f => `<span>${esc(f)}</span>`).join('')}</span>
+          <span class="audit__cls">${esc(t('vclass.' + (cls === 'godan' ? 'godan' : 'ichidan')))}</span>
+        </button>`;
+    };
+    return `<div class="audit__card">${head}
+      <div class="audit__q">${esc(t('audit.which'))}</div>
+      <div class="audit__opts">${opt('ichidan')}${opt('godan')}</div></div>`;
+  }
+
+  function renderAudit() {
+    const group = el('verbAuditGroup');
+    if (!group) return;
+    const pending = DB.verbsNeedingAudit();
+    group.hidden = pending.length === 0;
+    if (!pending.length) return;
+    group.querySelector('.audit__intro').textContent = t('audit.intro', pending.length);
+    el('verbAuditList').innerHTML = pending.map(auditCard).join('');
+  }
+
   // ---- render ----------------------------------------------
   function render() {
+    renderAudit();
     el('setDark').checked = DB.getTheme() === 'dark';
     el('setLang').value = DB.getLocale();
     el('setTolerance').value = DB.getTolerance();
@@ -90,7 +142,8 @@ const Settings = (() => {
       ? cats.map(c => {
           const n = DB.countInCategory(c);
           return `<div class="cat-manage__row">
-            <span class="cat-manage__name">${esc(c)} <small style="color:var(--text-dim)">(${n})</small></span>
+            <span class="cat-manage__name">${esc(c)} <small style="color:var(--text-dim)">(${n})</small>
+              <span class="star p ${DB.categoryStar(c) ? 'star--on' : ''}">★</span></span>
             <button class="cat-manage__del" data-delcat="${esc(c)}" aria-label="🗑">🗑</button>
           </div>`;
         }).join('')
@@ -172,6 +225,13 @@ const Settings = (() => {
       const b = e.target.closest('[data-palette]');
       if (b) pickPalette(b.dataset.palette);
     });
+    el('verbAuditList').addEventListener('click', e => {
+      const b = e.target.closest('[data-audit]');
+      if (!b) return;
+      DB.setVerbClass(b.dataset.audit, b.dataset.cls);
+      renderAudit();     // decided words drop out of the list immediately
+      renderStats();
+    });
     el('catManage').addEventListener('click', e => {
       const b = e.target.closest('[data-delcat]');
       if (b) deleteCat(b.dataset.delcat);
@@ -183,3 +243,7 @@ const Settings = (() => {
 
   return { render, bind, applyAppearance };
 })();
+
+/* Same const-vs-window issue as DB (see end of data.js): main.js probes
+   `window.Settings` before nudging the backup status line. */
+window.Settings = Settings;

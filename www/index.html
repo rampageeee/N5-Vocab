@@ -72,6 +72,12 @@
           </span>
           <span class="hub__label" data-i18n="hub.kanji">Kanji writing</span>
         </button>
+        <button class="hub__tile" data-goto="drill">
+          <span class="hub__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.3 4.9 5.2.7-3.8 3.7.9 5.3L12 15.1 7.4 17.6l.9-5.3L4.5 8.6l5.2-.7z"/></svg>
+          </span>
+          <span class="hub__label" data-i18n="hub.drill">Word forms</span>
+        </button>
         <button class="hub__tile" data-goto="sentences">
           <span class="hub__icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 4v-4a2 2 0 0 1-1-2z"/><path d="M8 8h8M8 11h5"/></svg>
@@ -122,6 +128,16 @@
       <!-- setup: pick category (auto-starts on choice) -->
       <div class="fc-setup" id="fcSetup">
         <select id="fcCategory"></select>
+        <div class="fc-filters">
+          <label class="fc-filter">
+            <input type="checkbox" id="fcFilterToday">
+            <span data-i18n="flash.filter.today">Skip words already scored today</span>
+          </label>
+          <label class="fc-filter">
+            <input type="checkbox" id="fcFilterStarred">
+            <span data-i18n="flash.filter.starred">Skip words that already have the bronze star</span>
+          </label>
+        </div>
       </div>
 
       <!-- active session -->
@@ -142,7 +158,7 @@
         </div>
 
         <div class="fc-answer">
-          <input type="text" id="fcInput" data-i18n-ph="flash.input.ph" placeholder="type the reading (kana)…" autocomplete="off" autocapitalize="off">
+          <input type="text" id="fcInput" data-i18n-ph="flash.input.ph" placeholder="type the reading (kana)…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
           <button class="tool-btn" id="fcAction" data-mode="check">Check</button>
         </div>
         <div class="fc-feedback" id="fcFeedback"></div>
@@ -189,11 +205,49 @@
             <div class="kd-controls">
               <button class="tool-btn tool-btn--ghost" id="kdClear" data-i18n="kanji.clear">Clear</button>
               <button class="tool-btn" id="kdRetry" data-i18n="kanji.retry" hidden>Retry</button>
+              <button class="tool-btn tool-btn--ghost" id="kdPriority"></button>
             </div>
           </div>
           <div class="kd-cheat" id="kdCheat"></div>
         </div>
       </div>
+    </section>
+
+    <!-- ============ DRILL (star 3, conjugating words) ============ -->
+    <section class="view" id="view-drill">
+      <div class="view__head"><h1 class="view__title" data-i18n="hub.drill">Word forms</h1></div>
+
+      <div class="fc-setup" id="drSetup">
+        <select id="drCategory"></select>
+        <p class="audit__intro" data-i18n="drill.intro"></p>
+      </div>
+
+      <div class="fc-stage" id="drStage" hidden>
+        <div class="fc-progress-num" id="drCounter"></div>
+
+        <div class="dr-card">
+          <div class="dr-word jp" id="drWord"></div>
+          <div class="dr-reading" id="drReading"></div>
+          <div class="dr-trans" id="drTrans"></div>
+          <div class="dr-target" id="drTarget"></div>
+        </div>
+
+        <div class="fc-answer">
+          <input type="text" id="drInput" data-i18n-ph="drill.input.ph" placeholder="type the form…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+          <button class="tool-btn" id="drAction" data-mode="check">Check</button>
+        </div>
+        <div class="fc-feedback" id="drFeedback"></div>
+
+        <div class="fc-restart" id="drRestart" hidden>
+          <div class="fc-restart__msg" id="drRestartMsg"></div>
+          <div class="fc-restart__btns">
+            <button class="tool-btn" id="drAgain">Again</button>
+            <button class="tool-btn tool-btn--ghost" id="drBack">Back</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="fc-list" id="drList"></div>
     </section>
 
     <!-- ============ STUBS ============ -->
@@ -207,6 +261,7 @@
 
       <div class="chk-output" id="chkOutput" hidden>
         <div class="chk-sentence jp" id="chkSentence"></div>
+        <div class="chk-gold" id="chkGold" hidden></div>
         <div class="chk-detail" id="chkDetail" hidden></div>
         <div class="chk-corrected" id="chkCorrected" hidden>
           <div class="chk-corrected__label" data-i18n="checker.corrected">Suggested correction</div>
@@ -220,11 +275,17 @@
       <div class="view__head"><h1 class="view__title" data-i18n="hub.grammar">Grammar</h1></div>
 
       <div class="seg" style="margin-bottom:1.2rem;">
-        <button class="seg__btn seg--on" id="gramRef" data-i18n="grammar.reference">Reference</button>
+        <button class="seg__btn seg--on" id="gramLearn" data-i18n="grammar.learn">Learn</button>
+        <button class="seg__btn" id="gramRef" data-i18n="grammar.reference">Rules</button>
         <button class="seg__btn" id="gramMine" data-i18n="grammar.mine">My notes</button>
       </div>
 
-      <div id="gramRefView">
+      <div id="gramLearnView">
+        <nav class="toc" id="gramLearnToc"></nav>
+        <div id="gramLearnBody"></div>
+      </div>
+
+      <div id="gramRefView" hidden>
         <div class="gram-legend">
           <button class="gram-legend__toggle" id="gramLegendToggle" data-i18n="grammar.legend">Notation legend ▸</button>
           <div class="gram-legend__body" id="gramLegendBody" hidden></div>
@@ -267,6 +328,10 @@
         <div class="kd-top">
           <button class="tool-btn tool-btn--ghost" id="knBack" data-i18n="kanji.back">← Grid</button>
           <span class="kd-prompt" id="knPrompt"></span>
+          <div class="seg">
+            <button class="seg__btn seg--on" id="knPractice" data-i18n="kanji.practice">Practice</button>
+            <button class="seg__btn" id="knTest" data-i18n="kanji.test">Test</button>
+          </div>
         </div>
         <div class="kd-left" style="margin:0 auto;">
           <div class="kd-canvas-box" id="knCanvasBox">
@@ -278,6 +343,7 @@
           <div class="kd-result" id="knResult"></div>
           <div class="kd-controls">
             <button class="tool-btn tool-btn--ghost" id="knClear" data-i18n="kanji.clear">Clear</button>
+            <button class="tool-btn" id="knRetry" data-i18n="kanji.retry" hidden>Retry</button>
           </div>
         </div>
       </div>
@@ -314,6 +380,12 @@
     <!-- ============ SETTINGS ============ -->
     <section class="view" id="view-settings">
       <div class="view__head"><h1 class="view__title" data-i18n="settings.title">Settings</h1></div>
+
+      <div class="settings-group" id="verbAuditGroup" hidden>
+        <h2 data-i18n="audit.title">Verb forms to check</h2>
+        <p class="audit__intro" data-i18n="audit.intro"></p>
+        <div id="verbAuditList"></div>
+      </div>
 
       <div class="settings-group">
         <h2 data-i18n="settings.appearance">Appearance</h2>
@@ -418,6 +490,7 @@
         <label class="fld" id="fldVerbClass" hidden>
           <span class="fld__lbl" data-i18n="word.verbClass">Verb class</span>
           <select id="wVerbClass">
+            <option value="" data-i18n="vclass.unset">— not set (check it later in Settings)</option>
             <option value="godan" data-i18n="vclass.godan">godan (う-verb)</option>
             <option value="ichidan" data-i18n="vclass.ichidan">ichidan (る-verb)</option>
             <option value="irregular" data-i18n="vclass.irregular">irregular (する / 来る)</option>
@@ -491,10 +564,13 @@
   <script src="js/kanji.js"></script>
   <script src="js/kana.js"></script>
   <script src="js/grammar-rules.js"></script>
+  <script src="js/grammar-lessons.js"></script>
   <script src="js/grammar.js"></script>
   <script src="js/checker.js"></script>
   <script src="js/sentences.js"></script>
+  <script src="js/drill.js"></script>
   <script src="js/review.js"></script>
+  <script src="js/celebrate.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/main.js"></script>
 </body>

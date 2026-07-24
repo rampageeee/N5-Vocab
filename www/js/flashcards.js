@@ -19,6 +19,31 @@ const Flash = (() => {
   let pos  = 0;
   let answered = false;
 
+  /* ---- keyboard stability ----------------------------------
+     The soft keyboard was opening and closing on every card because the
+     answer input lost focus twice per word: `input.disabled = true` on
+     check (a disabled element cannot hold focus, so the browser blurs it
+     and dismisses the keyboard), then `.focus()` on the next card brought
+     it back. Tapping the Check/Next button contributed a third blur —
+     a tap moves focus to the button by default.
+
+     So: never disable the input. `answered` already gates scoring, and
+     lockInput() is now cosmetic only (a class), leaving focus exactly
+     where it is. Card-to-card the keyboard never moves. */
+  function lockInput(on) {
+    const i = el('fcInput');
+    i.classList.toggle('is-locked', !!on);
+    i.setAttribute('aria-readonly', on ? 'true' : 'false');
+  }
+
+  // Refocus without scrolling the view; no-op when focus never left.
+  function keepFocus() {
+    const i = el('fcInput');
+    if (document.activeElement !== i) {
+      try { i.focus({ preventScroll: true }); } catch { i.focus(); }
+    }
+  }
+
   function shuffle(a) {
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -33,18 +58,33 @@ const Flash = (() => {
     const cats = DB.categories();
     sel.innerHTML = `<option value="" disabled selected>${esc(t('flash.choose'))}</option>`
       + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    const f = DB.getFlashFilters();
+    el('fcFilterToday').checked  = f.hideScoredToday;
+    el('fcFilterStarred').checked = f.hideStarred;
     el('fcSetup').hidden = false;
     el('fcStage').hidden = true;
     el('fcRestart').hidden = true;
     renderList();
   }
 
+  // Deck filters, read once at session start (§ see DB.getFlashFilters).
+  // Order matters only for readability — both are pure exclusions.
+  function buildDeck(cat) {
+    const f = DB.getFlashFilters();
+    let words = DB.wordsIn(cat);
+    const total = words.length;
+    if (f.hideScoredToday) words = words.filter(w => !DB.scoredToday(w));
+    if (f.hideStarred)     words = words.filter(w => !DB.stars(w).bronze);
+    return { words, total, filtered: total > 0 && words.length === 0 };
+  }
+
   // ---- session start (fired by category change) ------------
   function start() {
     const cat = el('fcCategory').value;
     if (!cat) return;
-    const words = DB.wordsIn(cat);
-    if (words.length === 0) { alert(t('flash.emptyCat')); return; }
+    const { words, total, filtered } = buildDeck(cat);
+    if (total === 0)  { alert(t('flash.emptyCat')); el('fcCategory').value = ''; return; }
+    if (filtered)     { alert(t('flash.filteredEmpty')); el('fcCategory').value = ''; return; }
     deck = shuffle(words.map(w => w.id));
     pos = 0;
     el('fcSetup').hidden = true;
@@ -72,11 +112,11 @@ const Flash = (() => {
     el('flashcard').classList.remove('is-flipped');
     el('fcInput').value = '';
     el('fcInput').placeholder = t('flash.input.ph');
-    el('fcInput').disabled = false;
+    lockInput(false);
     el('fcFeedback').textContent = '';
     el('fcFeedback').className = 'fc-feedback';
     setAction('check');
-    el('fcInput').focus();
+    keepFocus();
   }
 
   // Tap-to-flip = unscored self-check. Revealing commits the card:
@@ -87,7 +127,7 @@ const Flash = (() => {
     card.classList.toggle('is-flipped');
     if (revealing && !answered) {
       answered = true;
-      el('fcInput').disabled = true;
+      lockInput(true);
       el('fcInput').placeholder = t('flash.revealed.ph');
       el('fcFeedback').textContent = t('flash.selfcheck');
       el('fcFeedback').className = 'fc-feedback fc-feedback--dim';
@@ -97,15 +137,22 @@ const Flash = (() => {
 
   // ---- the single check/next button ------------------------
   function action() {
-    if (el('fcAction').dataset.mode === 'next') return next();
-    submit();
+    if (el('fcAction').dataset.mode === 'next') next();
+    else submit();
+    keepFocus();   // belt-and-braces if a platform ignores the pointerdown guard
   }
 
   function submit() {
     if (answered) return;
     const w = DB.getWord(deck[pos]);
+    const hadBronze = DB.stars(w).bronze;          // sampled BEFORE scoring
     const res = DB.scoreFlash(w.id, el('fcInput').value);
     const fb = el('fcFeedback');
+    // Only on the point that actually crosses the threshold — not on every
+    // correct answer, and never on a re-run of an already-starred word.
+    if (res.awarded && !hadBronze && DB.stars(DB.getWord(w.id)).bronze) {
+      if (window.Celebrate) Celebrate.fire('bronze');
+    }
 
     if (res.correct) {
       if (res.awarded)          { fb.textContent = t('flash.correct');     fb.className = 'fc-feedback fc-feedback--ok'; }
@@ -117,7 +164,7 @@ const Flash = (() => {
     }
 
     answered = true;
-    el('fcInput').disabled = true;
+    lockInput(true);
     setAction('next');
     renderList();
   }
@@ -135,7 +182,7 @@ const Flash = (() => {
     el('fcRestartMsg').textContent = t('flash.cycleAgain');
     el('fcAgain').textContent = t('flash.again');
     el('fcBack').textContent = t('flash.back');
-    el('fcInput').disabled = true;
+    lockInput(true);
     setAction('next');
   }
 
@@ -195,9 +242,21 @@ const Flash = (() => {
   // ---- bind ------------------------------------------------
   function bind() {
     el('fcCategory').addEventListener('change', start);
+    el('fcFilterToday').addEventListener('change',
+      e => DB.setFlashFilter('hideScoredToday', e.target.checked));
+    el('fcFilterStarred').addEventListener('change',
+      e => DB.setFlashFilter('hideStarred', e.target.checked));
     el('flashcard').addEventListener('click', flip);
+    // Suppressing the default pointerdown action stops the button taking
+    // focus, so the input never blurs and the soft keyboard never animates.
+    // click still fires normally.
+    el('fcAction').addEventListener('pointerdown', e => e.preventDefault());
     el('fcAction').addEventListener('click', action);
-    el('fcInput').addEventListener('keydown', e => { if (e.key === 'Enter') action(); });
+    el('fcInput').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();   // some soft keyboards dismiss themselves on an unhandled Enter
+      action();
+    });
     el('fcAgain').addEventListener('click', () => { deck = shuffle(deck); pos = 0; el('fcRestart').hidden = true; showCard(); });
     el('fcBack').addEventListener('click', endSession);
   }

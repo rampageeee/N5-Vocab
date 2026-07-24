@@ -102,9 +102,15 @@ const Kana = (() => {
     // a yōon entry is only "ready" once BOTH characters have data
     const chars = [...ch];
     const has = chars.every(hasData);
+    // A yōon tile is only "done" when BOTH of its characters are — progress
+    // is stored per character, never per tile, so ひ mastered via ひゃ also
+    // counts toward ひ on its own tile and toward any word containing it.
+    const prog = Math.min(...chars.map(DB.kanaProgress));
+    const done = prog >= DB.SILVER_TARGET;
+    const star = `<span class="star s ${done ? 'star--on' : ''}">★</span>`;
     return `<button class="ktile ${has ? '' : 'ktile--nodata'}" ${has ? `data-seq="${esc(ch)}"` : 'disabled'}>
       <span class="ktile__ch">${esc(ch)}</span>
-      <span class="ktile__prog">${esc(entry.romaji)}</span>
+      <span class="ktile__prog">${star} ${esc(entry.romaji)}${has ? ` ${prog}/${DB.SILVER_TARGET}` : ''}</span>
     </button>`;
   }
 
@@ -124,6 +130,8 @@ const Kana = (() => {
   let seq = [], seqPos = 0;      // seq: array of single chars to trace in order
   let curCh = null, ref = null, refRaw = null;
   let strokes = [], cur = null;
+  let mode = 'practice';        // 'practice' | 'test' — mirrors kanji.js
+  let testDone = false;         // a scored attempt is on screen
   let gg, rg, ig, box;
 
   const toGlyph  = p => ({ x: p.x * (VBOX / SIZE), y: p.y * (VBOX / SIZE) });
@@ -134,8 +142,15 @@ const Kana = (() => {
     seqPos = 0;
     el('kanaGridView').hidden = true;
     el('kanaDraw').hidden = false;
-    loadCurrent();
+    setMode('practice');
     requestAnimationFrame(fit);
+  }
+
+  function setMode(m) {
+    mode = m;
+    el('knPractice').classList.toggle('seg--on', m === 'practice');
+    el('knTest').classList.toggle('seg--on', m === 'test');
+    loadCurrent();
   }
 
   function loadCurrent() {
@@ -146,6 +161,8 @@ const Kana = (() => {
     el('knPrompt').textContent = seq.length > 1 ? `${seq.join('')} (${seqPos + 1}/${seq.length})` : seq[0];
     el('knResult').textContent = '';
     el('knResult').className = 'kd-result';
+    el('knRetry').hidden = true;
+    testDone = false;
     drawRef(); redrawInk(); updateHint();
   }
 
@@ -183,7 +200,7 @@ const Kana = (() => {
   function drawRef() {
     if (!rg) return;
     rg.clearRect(0, 0, SIZE, SIZE);
-    if (!refRaw) return;
+    if (mode !== 'practice' || !refRaw) return;
     const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
     refRaw.forEach((raw, idx) => {
       rg.strokeStyle = col;
@@ -193,12 +210,8 @@ const Kana = (() => {
       raw.forEach((p, k) => { const c = toCanvas(p); k ? rg.lineTo(c.x, c.y) : rg.moveTo(c.x, c.y); });
       rg.stroke();
     });
-    if (refRaw.length && strokes.length < refRaw.length) {
-      const s = toCanvas(refRaw[strokes.length][0]);
-      rg.globalAlpha = 1; rg.fillStyle = col;
-      rg.beginPath(); rg.arc(s.x, s.y, 4, 0, 7); rg.fill();
-    }
     rg.globalAlpha = 1;
+    // Markers moved to the ink layer (#knInk sits above #knRef) — see redrawInk().
   }
 
   function redrawInk() {
@@ -211,6 +224,16 @@ const Kana = (() => {
       st.forEach((p, k) => { k ? ig.lineTo(p.x, p.y) : ig.moveTo(p.x, p.y); });
       ig.stroke();
     });
+    drawMarkers();
+  }
+
+  // Start dot + direction arrow for the next stroke, on the topmost layer.
+  // Kana tracing is practice-only, so there's no test-mode guard to make.
+  function drawMarkers() {
+    if (mode !== 'practice') return;   // a start dot would give the glyph away
+    if (!refRaw || !refRaw.length || strokes.length >= refRaw.length) return;
+    const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
+    SE.drawStrokeMarkers(ig, refRaw[strokes.length], toCanvas, col);
   }
 
   function pos(e) {
@@ -219,7 +242,9 @@ const Kana = (() => {
   }
 
   function onDown(e) {
-    if (!ref || strokes.length >= ref.length) return;
+    if (!ref || testDone) return;
+    if (mode === 'practice' && strokes.length >= ref.length) return;
+    if (mode === 'test' && strokes.length >= ref.length + 3) return;
     el('knInk').setPointerCapture(e.pointerId);
     cur = [pos(e)]; redrawInk();
   }
@@ -235,6 +260,12 @@ const Kana = (() => {
   function practiceTol(tl) { return { pos: tl.pos * 1.5, shape: tl.shape * 1.5, dir: Math.max(0, tl.dir - 0.2), ramp: tl.ramp }; }
 
   function commitStroke(raw) {
+    if (mode === 'test') {
+      strokes.push(raw);
+      updateHint();
+      if (strokes.length >= ref.length) scoreTest();
+      return;
+    }
     const idx = strokes.length;
     const tl = TOL[DB.getTolerance()];
     const g = SE.grade(SE.scoreStroke(raw.map(toGlyph), ref[idx]), practiceTol(tl));
@@ -246,6 +277,42 @@ const Kana = (() => {
       el('knResult').textContent = t('kanji.retryStroke');
       el('knResult').className = 'kd-result kd-result--bad';
     }
+  }
+
+  /* Blind test — the only path that awards progress. Same 80/100 bar and the
+     same overshoot penalty kanji.js uses, so a kana pass and a kanji pass
+     represent the same standard of work. */
+  function scoreTest() {
+    const tl = TOL[DB.getTolerance()];
+    let sum = 0;
+    for (let i = 0; i < ref.length; i++) sum += SE.grade(SE.scoreStroke(strokes[i].map(toGlyph), ref[i]), tl);
+    const coverage = sum / ref.length;
+    const overshoot = Math.max(0, strokes.length - ref.length) / ref.length;
+    const final = Math.max(0, Math.round((coverage - overshoot) * 100));
+    const r = el('knResult');
+    testDone = true;
+
+    if (final >= 80) {
+      const before = DB.kanaProgress(curCh);
+      const n = DB.recordKanaPass(curCh);
+      r.textContent = t('kanji.pass', final, n, DB.SILVER_TARGET)
+        + (n >= DB.SILVER_TARGET ? t('kanji.silverStar') : '');
+      r.className = 'kd-result kd-result--ok';
+      if (before < DB.SILVER_TARGET && n >= DB.SILVER_TARGET && window.Celebrate) Celebrate.fire('silver');
+    } else {
+      r.textContent = t('kanji.fail', final);
+      r.className = 'kd-result kd-result--bad';
+    }
+    // One button, two jobs: move on through a yōon pair, or re-attempt.
+    const more = final >= 80 && seqPos < seq.length - 1;
+    el('knRetry').textContent = t(more ? 'flash.next' : 'kanji.retry');
+    el('knRetry').dataset.mode = more ? 'next' : 'retry';
+    el('knRetry').hidden = false;
+  }
+
+  function retryOrNext() {
+    if (el('knRetry').dataset.mode === 'next') { seqPos++; loadCurrent(); return; }
+    loadCurrent();
   }
 
   function advance() {
@@ -260,14 +327,19 @@ const Kana = (() => {
   }
 
   function updateHint() {
-    el('knHint').textContent = ref && strokes.length < ref.length
-      ? t('kanji.stroke', strokes.length + 1, ref.length) : t('kanji.done');
+    if (!ref) { el('knHint').textContent = ''; return; }
+    if (strokes.length >= ref.length) { el('knHint').textContent = t('kanji.done'); return; }
+    el('knHint').textContent = mode === 'test'
+      ? t('kanji.strokeMem', strokes.length + 1, ref.length)
+      : t('kanji.stroke', strokes.length + 1, ref.length);
   }
 
   function clear() {
     strokes = []; cur = null;
     el('knResult').textContent = '';
     el('knResult').className = 'kd-result';
+    el('knRetry').hidden = true;
+    testDone = false;
     drawRef(); redrawInk(); updateHint();
   }
 
@@ -281,6 +353,9 @@ const Kana = (() => {
         if (b) openSeq(b.dataset.seq);
       });
     });
+    el('knPractice').addEventListener('click', () => setMode('practice'));
+    el('knTest').addEventListener('click', () => setMode('test'));
+    el('knRetry').addEventListener('click', retryOrNext);
     el('knBack').addEventListener('click', backToGrid);
     el('knClear').addEventListener('click', clear);
     const ink = el('knInk');

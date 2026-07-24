@@ -41,7 +41,64 @@ const Kanji = (() => {
     return raw ? raw.map(SE.parsePath) : null;
   };
 
+  /* ---------- N5 priority set ----------
+     The JLPT publishes no official kanji list; every "N5 list" in
+     circulation is a reconstruction from past papers, and they disagree
+     with each other on membership (published counts vary between 79 and
+     80, and the sets differ on characters like 飲/買/空/花). So this is a
+     DEFAULT ordering hint, not a claim about what the exam contains — any
+     character can be pushed into or out of the group by hand from its
+     drawing screen, and that choice overrides the list. */
+  const N5 = new Set([...'人大分一見出日行前時生本中今間年子長上入後気来話女国金高下学先外何男名月小聞食書山電二車水木母校父白語十万友川三天東半北火土南千西毎休八読五四百円午七左右雨六九']);
+
+  const isPriority = ch => {
+    const p = DB.kanjiPriority(ch);
+    return p === 'high' || (p === 'auto' && N5.has(ch));
+  };
+
+  // Which "done" sections are folded. Session-lived, keyed by group id, and
+  // folded by default — the whole point of the split is to keep finished
+  // characters out of the way.
+  const doneFolded = { pri: true, rest: true };
+
   /* ---------- grid ---------- */
+  function tileHTML(ch) {
+    const has = !!(window.KANJI_DATA && window.KANJI_DATA[ch]);
+    const prog = DB.kanjiProgress(ch);
+    const done = prog >= DB.SILVER_TARGET;
+    const star = `<span class="star s ${done ? 'star--on' : ''}">★</span>`;
+    return `<button class="ktile ${has ? '' : 'ktile--nodata'}" ${has ? `data-ch="${esc(ch)}"` : 'disabled'}>
+      <span class="ktile__ch">${esc(ch)}</span>
+      <span class="ktile__prog">${star}${has ? ` ${prog}/${DB.SILVER_TARGET}` : ' —'}</span>
+    </button>`;
+  }
+
+  // One group = the unstarred characters, then a foldable block of the
+  // starred ones. Both halves are rendered even when empty so the group
+  // header still reports an honest count.
+  function groupHTML(id, titleKey, chars) {
+    if (!chars.length) return '';
+    const todo = chars.filter(c => DB.kanjiProgress(c) < DB.SILVER_TARGET);
+    const done = chars.filter(c => DB.kanjiProgress(c) >= DB.SILVER_TARGET);
+    const folded = doneFolded[id];
+
+    const todoBlock = todo.length
+      ? `<div class="kgrid">${todo.map(tileHTML).join('')}</div>`
+      : `<p class="stub">${esc(t('kanji.groupAllDone'))}</p>`;
+
+    const doneBlock = done.length ? `
+      <button class="kgroup__done-toggle" data-donefold="${id}" aria-expanded="${!folded}">
+        <span>${esc(t('kanji.groupDone', done.length))}</span>
+        <span class="fc-list__chev">${folded ? '▸' : '▾'}</span>
+      </button>
+      <div ${folded ? 'hidden' : ''}><div class="kgrid">${done.map(tileHTML).join('')}</div></div>` : '';
+
+    return `<section class="kgroup">
+      <h2 class="kgroup__title">${esc(t(titleKey))} <small>${todo.length}/${chars.length}</small></h2>
+      ${todoBlock}${doneBlock}
+    </section>`;
+  }
+
   function render() {
     const wrap = el('kanjiGrid');
     wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loading'))}</p>`;
@@ -49,17 +106,25 @@ const Kanji = (() => {
       if (!ok) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loadFail'))}</p>`; return; }
       const chars = DB.uniqueKanji();
       if (chars.length === 0) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.empty'))}</p>`; return; }
-      wrap.innerHTML = chars.map(ch => {
-        const has = !!(window.KANJI_DATA && window.KANJI_DATA[ch]);
-        const prog = DB.kanjiProgress(ch);
-        const done = prog >= DB.SILVER_TARGET;
-        const star = `<span class="star s ${done ? 'star--on' : ''}">★</span>`;
-        return `<button class="ktile ${has ? '' : 'ktile--nodata'}" ${has ? `data-ch="${esc(ch)}"` : 'disabled'}>
-          <span class="ktile__ch">${esc(ch)}</span>
-          <span class="ktile__prog">${star}${has ? ` ${prog}/${DB.SILVER_TARGET}` : ' —'}</span>
-        </button>`;
-      }).join('');
+      wrap.innerHTML =
+          groupHTML('pri',  'kanji.groupN5',    chars.filter(isPriority))
+        + groupHTML('rest', 'kanji.groupOther', chars.filter(c => !isPriority(c)));
     });
+  }
+
+  function syncPriorityBtn() {
+    const b = el('kdPriority');
+    if (!b || !curCh) return;
+    b.textContent = t(isPriority(curCh) ? 'kanji.unprioritise' : 'kanji.prioritise');
+  }
+
+  function togglePriority() {
+    if (!curCh) return;
+    // Write the resulting state explicitly rather than flipping to 'auto' —
+    // otherwise a character the bundled list already contains could never be
+    // demoted, and one it omits could never be promoted twice in a row.
+    DB.setKanjiPriority(curCh, isPriority(curCh) ? 'low' : 'high');
+    syncPriorityBtn();
   }
 
   /* ---------- canvas session ---------- */
@@ -90,6 +155,7 @@ const Kanji = (() => {
     el('kanjiGridView').hidden = true;
     el('kanjiDraw').hidden = false;
     setMode('practice');
+    syncPriorityBtn();
     requestAnimationFrame(fit);
   }
 
@@ -155,12 +221,10 @@ const Kanji = (() => {
       raw.forEach((p, k) => { const c = toCanvas(p); k ? rg.lineTo(c.x, c.y) : rg.moveTo(c.x, c.y); });
       rg.stroke();
     });
-    if (strokes.length < refRaw.length) {
-      const s = toCanvas(refRaw[strokes.length][0]);
-      rg.globalAlpha = 1; rg.fillStyle = col;
-      rg.beginPath(); rg.arc(s.x, s.y, 4, 0, 7); rg.fill();
-    }
     rg.globalAlpha = 1;
+    // The start/end markers used to be drawn here, on the reference layer —
+    // where #kdInk (z-index 3) buried them under the user's own strokes.
+    // They now ride the ink layer instead; see redrawInk().
   }
 
   function redrawInk() {
@@ -173,6 +237,17 @@ const Kanji = (() => {
       st.forEach((p, k) => { k ? ig.lineTo(p.x, p.y) : ig.moveTo(p.x, p.y); });
       ig.stroke();
     });
+    drawMarkers();
+  }
+
+  // Start dot + direction arrow for the stroke being asked for next. Topmost
+  // layer, so previously-drawn ink can't hide them. Practice only — Test is
+  // blind by definition, and a start marker would give the glyph away.
+  function drawMarkers() {
+    if (mode !== 'practice' || !refRaw) return;
+    if (strokes.length >= refRaw.length) return;
+    const col = getComputedStyle(document.body).getPropertyValue('--kanji').trim();
+    SE.drawStrokeMarkers(ig, refRaw[strokes.length], toCanvas, col);
   }
 
   function pos(e) {
@@ -241,7 +316,11 @@ const Kanji = (() => {
     const final = Math.max(0, Math.round((coverage - overshoot) * 100));
     const r = el('kdResult');
     if (final >= 80) {
+      const before = DB.kanjiProgress(curCh);
       const n = DB.recordKanjiPass(curCh);
+      if (before < DB.SILVER_TARGET && n >= DB.SILVER_TARGET) {
+        if (window.Celebrate) Celebrate.fire('silver');
+      }
       r.textContent = t('kanji.pass', final, n, DB.SILVER_TARGET) + (n >= DB.SILVER_TARGET ? t('kanji.silverStar') : '');
       r.className = 'kd-result kd-result--ok';
     } else {
@@ -291,6 +370,13 @@ const Kanji = (() => {
       const b = e.target.closest('[data-ch]');
       if (b) openChar(b.dataset.ch);
     });
+    el('kanjiGrid').addEventListener('click', e => {
+      const f = e.target.closest('[data-donefold]');
+      if (!f) return;
+      doneFolded[f.dataset.donefold] = !doneFolded[f.dataset.donefold];
+      render();
+    });
+    el('kdPriority').addEventListener('click', togglePriority);
     el('kdBack').addEventListener('click', backToGrid);
     el('kdPractice').addEventListener('click', () => setMode('practice'));
     el('kdTest').addEventListener('click', () => setMode('test'));

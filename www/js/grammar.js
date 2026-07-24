@@ -18,7 +18,50 @@ const Grammar = (() => {
   const t = (k, ...a) => I18N.t(k, ...a);
   const el = id => document.getElementById(id);
 
-  let tab = 'reference';   // 'reference' | 'mine'
+  let tab = 'learn';   // 'learn' | 'reference' | 'mine'
+
+  /* ---- Learn pane (js/grammar-lessons.js) --------------------
+     The default. The Rules pane below it is unchanged and still canonical —
+     it is simply no longer the first thing a beginner meets, because it
+     opens with a rule ID and a bracket notation and expects a legend to
+     have been read first. */
+  function exampleHTML(ex) {
+    const parts = (ex.parts || []).map(([chunk, gloss]) =>
+      `<span class="glossbox">
+         <span class="glossbox__jp jp">${esc(chunk)}</span>
+         <span class="glossbox__en">${esc(gloss)}</span>
+       </span>`).join('');
+    return `<div class="lesson-ex">
+      <div class="lesson-ex__jp jp">${esc(ex.jp)}</div>
+      ${ex.reading ? `<div class="lesson-ex__reading jp">${esc(ex.reading)}</div>` : ''}
+      <div class="lesson-ex__gloss">${parts}</div>
+      <div class="lesson-ex__en">${esc(ex.en)}</div>
+    </div>`;
+  }
+
+  function lessonHTML(it) {
+    return `<article class="lesson">
+      <header class="lesson__head">
+        <span class="lesson__particle jp">${esc(it.particle)}</span>
+        <span class="lesson__job">${esc(it.job)}${it.say ? ` <em>(${esc(it.say)})</em>` : ''}</span>
+      </header>
+      <p class="lesson__plain">${esc(it.plain)}</p>
+      ${(it.examples || []).map(exampleHTML).join('')}
+      ${it.watch ? `<div class="lesson__watch"><strong>${esc(t('grammar.watch'))}</strong> ${esc(it.watch)}</div>` : ''}
+    </article>`;
+  }
+
+  function renderLearn() {
+    const data = window.GRAMMAR_LESSONS || [];
+    el('gramLearnToc').innerHTML = data.map((g, i) =>
+      `<button type="button" data-jump="lesson-${i}">${esc(g.items.map(x => x.particle).join(' '))}</button>`).join('');
+    el('gramLearnBody').innerHTML = data.map((g, i) => `
+      <section class="lesson-stage" id="lesson-${i}">
+        <h2 class="lesson-stage__title">${esc(g.stage)}</h2>
+        <p class="lesson-stage__blurb">${esc(g.blurb)}</p>
+        ${g.items.map(lessonHTML).join('')}
+      </section>`).join('');
+  }
 
   // ---- Reference pane ---------------------------------------
   function renderLegend() {
@@ -43,6 +86,19 @@ const Grammar = (() => {
       ${r.gloss ? `<div class="gram-rule__gloss">${esc(r.gloss)}</div>` : ''}
       ${examples}
     </div>`;
+  }
+
+  function showTab(which) {
+    tab = which;
+    el('gramLearn').classList.toggle('seg--on', which === 'learn');
+    el('gramRef').classList.toggle('seg--on', which === 'reference');
+    el('gramMine').classList.toggle('seg--on', which === 'mine');
+    el('gramLearnView').hidden = which !== 'learn';
+    el('gramRefView').hidden   = which !== 'reference';
+    el('gramMineView').hidden  = which !== 'mine';
+    if (which === 'learn') renderLearn();
+    else if (which === 'reference') { renderLegend(); renderReference(); }
+    else renderMine();
   }
 
   function renderReference() {
@@ -79,14 +135,7 @@ const Grammar = (() => {
   }
 
   // ---- pane switch --------------------------------------------
-  function render() {
-    el('gramRef').classList.toggle('seg--on', tab === 'reference');
-    el('gramMine').classList.toggle('seg--on', tab === 'mine');
-    el('gramRefView').hidden = tab !== 'reference';
-    el('gramMineView').hidden = tab !== 'mine';
-    renderLegend();
-    if (tab === 'reference') renderReference(); else renderMine();
-  }
+  function render() { showTab(tab); }
 
   // ---- add/edit modal ------------------------------------------
   const $ = id => document.getElementById(id);
@@ -150,8 +199,17 @@ const Grammar = (() => {
       const sec = document.getElementById(b.dataset.jump);
       if (sec) sec.scrollIntoView({ block: 'start' });
     });
-    el('gramRef').addEventListener('click', () => { tab = 'reference'; render(); });
-    el('gramMine').addEventListener('click', () => { tab = 'mine'; render(); });
+    el('gramLearn').addEventListener('click', () => showTab('learn'));
+    el('gramRef').addEventListener('click', () => showTab('reference'));
+    el('gramMine').addEventListener('click', () => showTab('mine'));
+    // Same delegated data-jump scroll the Rules TOC uses — never href="#id",
+    // which pushes a null-state history entry and drops Back to the hub.
+    el('gramLearnToc').addEventListener('click', e => {
+      const b = e.target.closest('[data-jump]');
+      if (!b) return;
+      const target = document.getElementById(b.dataset.jump);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     el('gramLegendToggle').addEventListener('click', () => {
       el('gramLegendBody').hidden = !el('gramLegendBody').hidden;
     });

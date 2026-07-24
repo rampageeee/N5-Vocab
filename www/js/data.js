@@ -38,6 +38,7 @@ const DB = (() => {
     categories: [],
     words: [],
     kanji: {},
+    kana: {},     // per-kana test passes, keyed by character — see recordKanaPass
     grammar: [],   // user-added entries { id, pattern_name, structure, example, note } —
                    // the built-in 35-rule reference lives in js/grammar-rules.js, not here
     mistakes: [],  // §3.7 — logged sentence-checker errors the user can review;
@@ -98,13 +99,26 @@ const DB = (() => {
       try {
         state = merge(JSON.parse(raw));
         reconcileKanji();
-        state.words.forEach(regenerateForms);   // backfill verb_class + forms on upgrade
+        state.words.forEach(regenerateForms);   // backfill verb_class + forms + auto-settle on upgrade
       } catch { /* keep blank */ }
     }
     return state;
   }
 
   function save() { Store.set(KEY, JSON.stringify(state)); }
+
+  /* Characters the kana chart can actually teach. Kept here rather than read
+     from KANA_DATA because stars() runs on every dictionary/flashcard render,
+     long before the lazy kana stroke file has loaded — a star rule that
+     depended on load order would flicker. ー and small っ/ッ are deliberately
+     absent: they have no chart entry, so requiring them would be another
+     gate that can never open. */
+  const KANA_TRACEABLE = new Set([
+    ...'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん',
+    ...'がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ', ...'ゃゅょ',
+    ...'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+    ...'ガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポ', ...'ャュョ'
+  ]);
 
   // ---- kanji extraction ------------------------------------
   const isKanji = ch => /[\u4e00-\u9faf\u3400-\u4dbf]/.test(ch);
@@ -160,14 +174,77 @@ const DB = (() => {
       ta: stem + 'た', te: stem + 'て', ba: stem + 'れば', potential: stem + 'られる'
     };
   }
+  // する-compounds (勉強する, 電話する, 買い物する…). Extremely common at N5,
+  // and previously produced NO forms at all: verb_class 'irregular' returned
+  // {} and only bare する/来る were rescued by the exception table.
+  function genSuru(key) {
+    const stem = key.slice(0, -2);   // drop する
+    return {
+      masu: stem + 'します', masen: stem + 'しません', nai: stem + 'しない',
+      ta: stem + 'した', te: stem + 'して', ba: stem + 'すれば', potential: stem + 'できる'
+    };
+  }
+
   // Adjectives: row-stem-style, no onbin step.
-  function genAdj(w) {
-    const key = headword(w);
+  function genAdj(w, key) {
     if (w.pos === 'i-adj') {
       const stem = key.slice(0, -1);   // drop い
       return { past: stem + 'かった', negative: stem + 'くない' };
     }
     return { past: key + 'だった', negative: key + 'じゃない' };   // na-adj
+  }
+
+  /* THE form builder. regenerateForms, previewForms and acceptedForms all
+     route through this one function — three callers deriving conjugations
+     three slightly different ways is exactly how a drill ends up marking a
+     correct answer wrong. */
+  function buildForms(w, cls, key) {
+    if (!key) return {};
+    if (w.pos === 'verb') {
+      return cls === 'ichidan'   ? genIchidan(key)
+           : cls === 'irregular' ? (/する$/.test(key) ? genSuru(key) : {})
+           : genGodan(key);
+    }
+    if (w.pos === 'i-adj' || w.pos === 'na-adj') return genAdj(w, key);
+    return {};
+  }
+
+  /* Which forms the gold drill may ask for. ば and the potential are
+     generated (the sentence checker needs them) but deliberately NOT drilled
+     — both are N4 material, and a beginner drill that quizzes them is
+     testing the wrong syllabus. */
+  const DRILL_FORMS = {
+    verb:     ['masu', 'masen', 'nai', 'ta', 'te'],
+    'i-adj':  ['past', 'negative'],
+    'na-adj': ['past', 'negative']
+  };
+  function drillFormsFor(w) {
+    if (!w || !DRILL_FORMS[w.pos]) return [];
+    if (w.pos === 'verb' && !w.class_confirmed) return [];   // unaudited class — never drill a guess
+    const f = w.forms || {};
+    return DRILL_FORMS[w.pos].filter(k => f[k]);
+  }
+  function drillable(w) { return drillFormsFor(w).length > 0; }
+
+  /* Every spelling that counts as right. The kanji form is canonical, but a
+     learner typing the all-kana version has not made a mistake — script
+     choice isn't a conjugation error at N5. A pinned irregular form is
+     authoritative: 行く's て-form is 行って, and the regular godan machinery
+     would happily "accept" 行いて if we merged instead of replacing. */
+  function acceptedForms(w, formKey) {
+    const out = new Set();
+    const add = v => { if (v) out.add(v); };
+    const ov = (w.irregular_forms || {})[formKey];
+    const readingEx = KNOWN_VERB_EXCEPTIONS[(w.reading || '').trim()];
+    if (ov) {
+      add(ov);
+      if (readingEx) add(readingEx[formKey]);
+      return [...out];
+    }
+    add(buildForms(w, w.verb_class, inflectionKey(w))[formKey]);
+    const r = (w.reading || '').trim();
+    if (r) add(buildForms(w, w.verb_class, r)[formKey]);
+    return [...out];
   }
 
   // ---- §0.2 closed exception set (exactly four) -------------
@@ -191,6 +268,90 @@ const DB = (() => {
     const hit = KNOWN_VERB_EXCEPTIONS[headword(w)];
     if (hit) w.irregular_forms = Object.assign({}, hit);
   }
+  /* ---- verb-class audit (§ ichidan-lookalike problem) --------
+     Ichidan verbs ALWAYS end in る, and the kana before that る is always
+     from the i-row or the e-row. That makes most verbs unambiguous by
+     inspection alone, and only a narrow band genuinely uncertain:
+
+       ends in く/む/す/ぐ/ぶ/つ/ぬ/う   → godan, no other option exists
+       ends in る, prev kana NOT i/e row → godan (分かる, 作る, 乗る…)
+       ends in する / 来る / くる         → irregular
+       ends in -iru / -eru               → AMBIGUOUS unless known lookalike
+
+     Only that last band reaches a human. The lookalike list is matched on
+     the KANJI form only, deliberately: the kana forms collide with genuine
+     ichidan verbs (いる = 要る godan but also 居る ichidan; きる = 切る godan
+     but also 着る ichidan), so auto-classifying a kana-only entry would be
+     guessing. Kana-only -iru/-eru verbs go to the human every time. */
+  const GODAN_LOOKALIKES = new Set(
+    ['帰る', '入る', '走る', '切る', '知る', '要る', '減る', '蹴る', '喋る', '滑る']);
+  const I_ROW = new Set([...'いきしちにひみりぎじぢびぴ']);
+  const E_ROW = new Set([...'えけせてねへめれげぜでべぺ']);
+
+  // Which of the word's two text fields actually carries the okurigana.
+  // headword() prefers kanji unconditionally, which silently breaks entries
+  // written as 食 / たべる — the kanji field alone has no inflectable ending,
+  // so genGodan() returned {} and the word got no forms at all.
+  function inflectionKey(w) {
+    const k = (w.kanji || '').trim(), r = (w.reading || '').trim();
+    if (k && GODAN_ROW[k.slice(-1)]) return k;
+    if (r && GODAN_ROW[r.slice(-1)]) return r;
+    return k || r || '';
+  }
+
+  // → null (not a verb) | {state:'clear', cls} | {state:'ambiguous'} | {state:'unusable'}
+  function verbAudit(w) {
+    if (!w || w.pos !== 'verb') return null;
+    const key = inflectionKey(w);
+    if (!key) return { state: 'unusable' };
+    if (/する$/.test(key) || /来る$/.test(key) || /くる$/.test(key)) return { state: 'clear', cls: 'irregular' };
+    const last = key.slice(-1);
+    if (!GODAN_ROW[last]) return { state: 'unusable' };   // doesn't end in a u-row kana at all
+    if (last !== 'る') return { state: 'clear', cls: 'godan' };
+    if (GODAN_LOOKALIKES.has(key)) return { state: 'clear', cls: 'godan' };
+
+    // The row of the kana before る decides it — but that test has to run on
+    // the READING, not the kanji form. 見る / 出る / 寝る / 着る put a kanji
+    // directly before る, which carries no row information at all; reading
+    // the kanji form here classified 見る as godan and generated 見ります.
+    const r = (w.reading || '').trim();
+    const kana = (r.slice(-1) === 'る') ? r : key;
+    const prev = kana.slice(-2, -1);
+    if (!prev || isKanji(prev)) return { state: 'ambiguous' };   // can't see the row — ask
+    if (I_ROW.has(prev) || E_ROW.has(prev)) return { state: 'ambiguous' };
+    return { state: 'clear', cls: 'godan' };
+  }
+
+  // What each candidate class WOULD produce, without touching the word.
+  // This is what the audit shows the person deciding — the forms themselves,
+  // never the class name, so no Japanese grammar vocabulary is required to
+  // answer correctly.
+  function previewForms(w, cls) {
+    const key = inflectionKey(w);
+    return Object.assign({}, buildForms(w, cls, key), w.irregular_forms || {});
+  }
+
+  // Verbs still awaiting a human decision, plus the ones whose text fields
+  // can't produce forms at all (usually a kanji field with the okurigana
+  // left off). Anything here is excluded from form-based exercises.
+  function verbsNeedingAudit() {
+    return state.words.filter(w => {
+      const a = verbAudit(w);
+      return a && ((a.state === 'ambiguous' && !w.class_confirmed) || a.state === 'unusable');
+    });
+  }
+
+  function setVerbClass(id, cls) {
+    const w = getWord(id);
+    if (!w || !['godan', 'ichidan', 'irregular'].includes(cls)) return false;
+    w.verb_class = cls;
+    w.class_confirmed = true;
+    regenerateForms(w);
+    save();
+    return true;
+  }
+
+
   function inferVerbClass(w) {
     const k = headword(w);
     if (k === 'する' || k === 'くる' || k === '来る') return 'irregular';
@@ -202,14 +363,16 @@ const DB = (() => {
   // ---- cache entry point -------------------------------------
   function regenerateForms(w) {
     if (w.pos === 'verb') {
-      if (!w.verb_class) w.verb_class = inferVerbClass(w);
+      // Anything the rules can decide alone is decided here, on every write —
+      // add, edit, hydrate and import all funnel through this function, so a
+      // separate settling pass would just be a fourth place to forget.
+      const a = verbAudit(w);
+      if (a && a.state === 'clear') { w.verb_class = a.cls; w.class_confirmed = true; }
+      else if (!w.verb_class) w.verb_class = inferVerbClass(w);
       seedKnownVerbException(w);
-      const base = w.verb_class === 'ichidan' ? genIchidan(headword(w))
-                 : w.verb_class === 'irregular' ? {}
-                 : genGodan(headword(w));
-      w.forms = Object.assign({}, base, w.irregular_forms || {});
+      w.forms = Object.assign({}, buildForms(w, w.verb_class, inflectionKey(w)), w.irregular_forms || {});
     } else if (w.pos === 'i-adj' || w.pos === 'na-adj') {
-      w.forms = Object.assign({}, genAdj(w), w.irregular_forms || {});
+      w.forms = Object.assign({}, buildForms(w, null, inflectionKey(w)), w.irregular_forms || {});
     } else {
       delete w.forms;
     }
@@ -333,7 +496,9 @@ const DB = (() => {
       lastFlashDate: null,
       lastSentenceDate: null
     };
-    if (pos === 'verb' && verb_class) w.verb_class = verb_class;
+    // An explicit pick in the word modal IS the audit answer for that word —
+    // otherwise choosing "ichidan" by hand still left it locked out of the drill.
+    if (pos === 'verb' && verb_class) { w.verb_class = verb_class; w.class_confirmed = true; }
     regenerateForms(w);
     state.words.push(w);
     reconcileKanji();
@@ -347,13 +512,17 @@ const DB = (() => {
     ['kanji', 'reading', 'translation', 'pos'].forEach(k => {
       if (k in fields) w[k] = (fields[k] || '').trim();
     });
-    if ('verb_class' in fields) w.verb_class = fields.verb_class || undefined;
+    if ('verb_class' in fields) {
+      w.verb_class = fields.verb_class || undefined;
+      if (fields.verb_class) w.class_confirmed = true;
+      else delete w.class_confirmed;        // cleared back to "not set" → returns to the audit
+    }
     // category is a controlled value (from a select) — assign as-is, enables
     // moving a word between categories from the edit modal.
     if ('category' in fields && fields.category && state.categories.includes(fields.category)) {
       w.category = fields.category;
     }
-    if (w.pos !== 'verb') delete w.verb_class;
+    if (w.pos !== 'verb') { delete w.verb_class; delete w.class_confirmed; }
     regenerateForms(w);
     reconcileKanji();
     save();
@@ -462,6 +631,11 @@ const DB = (() => {
       c => String.fromCharCode(c.charCodeAt(0) - 0x60));
   }
 
+  // Has this word already banked its one point for today? Read-only view of
+  // the same lastFlashDate field scoreFlash writes — the flashcard deck
+  // filter and the scorer can't disagree about what "today" means.
+  function scoredToday(w) { return !!w && w.lastFlashDate === todayStr(); }
+
   function scoreFlash(id, typed) {
     const w = getWord(id);
     if (!w) return { correct: false, awarded: false, cappedToday: false };
@@ -477,11 +651,59 @@ const DB = (() => {
     return { correct: true, awarded: true, cappedToday: false };
   }
 
+  /* Gold. One point per word per day, five to the star — the same cadence as
+     bronze, because the failure mode being guarded against is identical:
+     answering correctly five times in one sitting is short-term recall, not
+     retention. Reuses sentencePoints/lastSentenceDate, which were already in
+     the schema and never written to, so no migration. */
+  function scoreGold(id) {
+    const w = getWord(id);
+    if (!w) return { awarded: false, cappedToday: false, gold: false };
+    const today = todayStr();
+    if (w.lastSentenceDate === today) return { awarded: false, cappedToday: true, gold: stars(w).gold };
+    w.sentencePoints = (w.sentencePoints || 0) + 1;
+    w.lastSentenceDate = today;
+    save();
+    return { awarded: true, cappedToday: false, gold: stars(w).gold };
+  }
+
+  /* Category star. Every word in the category carrying all three — which is
+     only a meaningful bar now that each of the three has a route for every
+     word shape. An empty category is NOT complete; otherwise a category
+     would ship its reward before holding anything. */
+  function categoryStar(cat) {
+    const words = wordsIn(cat);
+    if (!words.length) return false;
+    return words.every(w => { const s = stars(w); return s.bronze && s.silver && s.gold; });
+  }
+
+  function categoryProgress(cat) {
+    const words = wordsIn(cat);
+    const done = words.filter(w => { const s = stars(w); return s.bronze && s.silver && s.gold; }).length;
+    return { done, total: words.length };
+  }
+
   // ---- stars (derived) -------------------------------------
-  function stars(word) {
+  /* Silver, restated. The old rule was `every kanji in the word is mastered`,
+     with a `chars.length > 0` guard — which meant a word with NO kanji
+     (ください, とても, コーヒー) had silver permanently false. Not unearned:
+     unreachable. Any category holding one such word could therefore never be
+     completed either.
+
+     Words that DO have kanji keep the identical rule, so nothing already
+     earned is disturbed. Kana-only words now fall back to the kana chart:
+     every traceable character in the reading has to be mastered there. */
+  function silverOf(word) {
     const chars = kanjiOf(word.kanji);
-    const silver = chars.length > 0 &&
-      chars.every(c => (state.kanji[c]?.testPasses || 0) >= SILVER_TARGET);
+    if (chars.length > 0) {
+      return chars.every(c => (state.kanji[c]?.testPasses || 0) >= SILVER_TARGET);
+    }
+    const kana = [...(word.reading || word.kanji || '')].filter(c => KANA_TRACEABLE.has(c));
+    return kana.length > 0 && kana.every(c => (state.kana[c]?.testPasses || 0) >= SILVER_TARGET);
+  }
+
+  function stars(word) {
+    const silver = silverOf(word);
     return {
       bronze: (word.flashPoints || 0)    >= BRONZE_TARGET,
       silver,
@@ -490,7 +712,35 @@ const DB = (() => {
   }
 
   function kanjiProgress(ch) { return state.kanji[ch]?.testPasses || 0; }
+
+  /* Priority override. The N5 kanji set is a community RECONSTRUCTION — the
+     JLPT publishes no official list, and the sources disagree on membership
+     — so the bundled list is a default, not an authority. Anything can be
+     pushed into or out of the priority group by hand and that choice wins.
+     'auto' means "use the bundled list". */
+  function kanjiPriority(ch) { return (state.kanji[ch] && state.kanji[ch].priority) || 'auto'; }
+  function setKanjiPriority(ch, v) {
+    if (!['auto', 'high', 'low'].includes(v)) return false;
+    if (!state.kanji[ch]) state.kanji[ch] = { testPasses: 0 };
+    if (v === 'auto') delete state.kanji[ch].priority;
+    else state.kanji[ch].priority = v;
+    save();
+    return true;
+  }
   function uniqueKanji() { return Object.keys(state.kanji); }
+
+  function kanaProgress(ch) { return state.kana[ch]?.testPasses || 0; }
+  function kanaTraceable(ch) { return KANA_TRACEABLE.has(ch); }
+
+  function recordKanaPass(ch) {
+    if (!KANA_TRACEABLE.has(ch)) return 0;
+    if (!state.kana[ch]) state.kana[ch] = { testPasses: 0 };
+    if (state.kana[ch].testPasses < SILVER_TARGET) {
+      state.kana[ch].testPasses++;
+      save();
+    }
+    return state.kana[ch].testPasses;
+  }
 
   function recordKanjiPass(ch) {
     if (!state.kanji[ch]) state.kanji[ch] = { testPasses: 0 };
@@ -519,6 +769,23 @@ const DB = (() => {
   function setTolerance(t) { state.settings.tolerance = t; save(); }
   function getLocale() { return state.settings.locale || 'en'; }
   function setLocale(l) { state.settings.locale = l; save(); }
+  // Deck filters — persisted so a preference survives app restarts (set once,
+  // not re-checked every session). Read at session START only; toggling them
+  // mid-session is impossible anyway (the setup panel is hidden while a deck
+  // is running), which keeps the deck array stable for its whole life.
+  const FLASH_FILTER_DEFAULTS = { hideScoredToday: false, hideStarred: false };
+  function getFlashFilters() {
+    return Object.assign({}, FLASH_FILTER_DEFAULTS, state.settings.flashFilters || {});
+  }
+  function setFlashFilter(key, on) {
+    if (!(key in FLASH_FILTER_DEFAULTS)) return false;
+    const f = getFlashFilters();
+    f[key] = !!on;
+    state.settings.flashFilters = f;
+    save();
+    return true;
+  }
+
   function getLastPos() { return state.settings.lastPos || ''; }
   function setLastPos(p) { state.settings.lastPos = p || ''; save(); }
   function lastExport() { return state.settings.lastExport; }
@@ -544,10 +811,22 @@ const DB = (() => {
     grammarEntries, getGrammarEntry, addGrammarEntry, updateGrammarEntry, deleteGrammarEntry,
     activeMistakes, allMistakes, getMistake, logMistake, scoreMistake,
     kanjiOf, uniqueKanji, kanjiProgress, recordKanjiPass,
-    scoreFlash, normKana,
+    kanjiPriority, setKanjiPriority,
+    kanaProgress, recordKanaPass, kanaTraceable,
+    verbAudit, verbsNeedingAudit, previewForms, setVerbClass, inflectionKey,
+    scoreFlash, scoredToday, normKana, scoreGold,
+    drillFormsFor, drillable, acceptedForms, categoryStar, categoryProgress,
+    getFlashFilters, setFlashFilter,
     stars, stats,
     getTheme, setTheme, getPalette, setPalette, getTolerance, setTolerance,
     getLocale, setLocale, getLastPos, setLastPos, lastExport, markExport,
     exportJSON, importJSON
   };
 })();
+
+/* `const DB = …` at classic-script top level creates a binding in the global
+   DECLARATIVE record, not a property on `window` — so `window.DB` was
+   undefined everywhere it was tested. That silently pinned I18N.t()'s locale
+   lookup to 'en' (see i18n.js) and made App.refreshExportStatus() a no-op.
+   Publish the reference explicitly instead of rewriting every call site. */
+window.DB = DB;

@@ -100,5 +100,60 @@ const StrokeEngine = (() => {
     return Math.cbrt(qPos * qShape * qDir);
   }
 
-  return { VBOX, N, TOL, parsePath, resample, centroid, scoreStroke, grade };
+  /* ---------- stroke direction markers ----------
+     Where the pen goes DOWN and where it comes UP for the stroke currently
+     being asked for. Lives here rather than in kanji.js/kana.js so the two
+     tracers can't drift apart on what a start dot or an end arrow looks like.
+
+     Must be painted on the INK canvas, not the reference canvas: #kdInk /
+     #knInk sit a layer above #kdRef / #knRef, so a marker drawn on the ref
+     layer disappears under whatever the user has already written.
+
+     `raw` is one un-resampled reference stroke in glyph space; `toCanvas`
+     is the caller's glyph→canvas mapping (uniform scale, so a direction
+     computed after mapping is the same direction computed before). */
+  function drawStrokeMarkers(ctx, raw, toCanvas, color) {
+    if (!raw || raw.length < 2) return;
+    const head = toCanvas(raw[0]);
+    const tip  = toCanvas(raw[raw.length - 1]);
+
+    // Exit tangent: walk back from the tip until far enough away to give a
+    // stable angle. KanjiVG paths often end in near-duplicate points, so the
+    // final segment on its own is unreliable.
+    const MIN = 6;
+    let back = null;
+    for (let k = raw.length - 2; k >= 0; k--) {
+      const p = toCanvas(raw[k]);
+      if (Math.hypot(tip.x - p.x, tip.y - p.y) >= MIN) { back = p; break; }
+    }
+    if (!back) back = head;   // whole stroke shorter than MIN — use it end to end
+
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+    // Start: solid filled dot — "put the pen here".
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(head.x, head.y, 4.5, 0, Math.PI * 2); ctx.fill();
+
+    // End: a lighter open chevron pointing the way the stroke travels, with
+    // its vertex ON the end point. Deliberately stroked, not filled, and
+    // smaller than the dot, so the two read as different marks at a glance.
+    const dx = tip.x - back.x, dy = tip.y - back.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0.5) {
+      const a = Math.atan2(dy, dx), L = 6.5, SPREAD = 0.62;
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(tip.x - L * Math.cos(a - SPREAD), tip.y - L * Math.sin(a - SPREAD));
+      ctx.lineTo(tip.x, tip.y);
+      ctx.lineTo(tip.x - L * Math.cos(a + SPREAD), tip.y - L * Math.sin(a + SPREAD));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  return { VBOX, N, TOL, parsePath, resample, centroid, scoreStroke, grade, drawStrokeMarkers };
 })();

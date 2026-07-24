@@ -25,6 +25,17 @@ const Vocab = (() => {
   // migrated on rename, stale keys after delete are harmless (just ignored).
   const collapsed = new Set();
 
+  // Folded is the default: on the first render of a session every EXISTING
+  // category starts collapsed. Seeding once (rather than per-render) means a
+  // category created later in the same session opens straight away — you add
+  // it because you're about to put words in it.
+  let seeded = false;
+  function seedCollapsed() {
+    if (seeded) return;
+    seeded = true;
+    DB.categories().forEach(c => collapsed.add(c));
+  }
+
   /* ---- reusable pointer sortable ---------------------------
      Drag by a handle; siblings are re-slotted live as the pointer
      crosses their midpoints; commit reads the resulting id order.
@@ -99,8 +110,18 @@ const Vocab = (() => {
     </span>`;
   }
 
+  // Category star: shown lit only when every word in the category carries all
+  // three. Dimmed otherwise, with the count as a tooltip, so it reads as a
+  // target rather than appearing out of nowhere on completion.
+  function catStarHTML(cat) {
+    const p = DB.categoryProgress(cat);
+    const on = DB.categoryStar(cat);
+    return `<span class="star p ${on ? 'star--on' : ''}" title="${esc(t('cat.starProgress', p.done, p.total))}">★</span>`;
+  }
+
   // ---- render whole section --------------------------------
   function render() {
+    seedCollapsed();
     renderTOC();
     renderBody();
     wireWordLists();
@@ -153,6 +174,7 @@ const Vocab = (() => {
           <button class="cat__grip" data-i18n-aria="cat.drag" aria-label="${esc(t('cat.drag'))}">${GRIP}</button>
           <span class="cat__caret" aria-hidden="true">▾</span>
           <span class="cat__name">${esc(cat)}</span>
+          ${catStarHTML(cat)}
           <small class="cat__count">${words.length}</small>
           <button class="cat__edit" data-rename="${esc(cat)}" data-i18n-aria="cat.rename" aria-label="${esc(t('cat.rename'))}">✎</button>
         </div>
@@ -276,7 +298,7 @@ const Vocab = (() => {
     $('wReading').value = '';
     $('wTrans').value = '';
     $('wPos').value = DB.getLastPos();     // remember last-used part of speech
-    $('wVerbClass').value = 'godan';
+    $('wVerbClass').value = '';   // no silent default — an unset class is audited, not guessed
     syncVerbClassVisibility();
     fillCategorySelect(cat);
     $('btnDeleteWord').hidden = true;
@@ -305,7 +327,7 @@ const Vocab = (() => {
     $('wReading').value = w.reading;
     $('wTrans').value = w.translation;
     $('wPos').value = w.pos || '';
-    $('wVerbClass').value = w.verb_class || 'godan';
+    $('wVerbClass').value = w.class_confirmed ? (w.verb_class || '') : '';
     syncVerbClassVisibility();
     fillCategorySelect(w.category);
     $('btnDeleteWord').hidden = false;

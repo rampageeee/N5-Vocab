@@ -139,6 +139,46 @@ const Sentences = (() => {
     });
   }
 
+  /* Gold for words that don't conjugate (雨, とても, コーヒー). They have no
+     forms to drill, so their route to the third star is using them in a
+     sentence that survives the checker.
+
+     The bar is deliberately more than "no errors": an empty result is not a
+     pass. 雨です。 has no violations and no unknown tokens, and would hand
+     over a gold point for four characters. Requiring at least one
+     structurally-checked particle means the sentence has to actually place
+     the word in a grammatical role.
+
+     Conjugating words are excluded here — they earn gold in the drill, and
+     letting one sentence award five words at once would make the five-day
+     cadence meaningless. */
+  function awardSentenceGold(tokens) {
+    const clean = tokens.every(tk =>
+      tk.type !== 'unknown' &&
+      tk.type !== 'conjugation-error' &&
+      !(tk.violations && tk.violations.length));
+    if (!clean) return [];
+    if (!tokens.some(tk => tk.type === 'particle')) return [];
+
+    const ids = [...new Set(tokens.filter(tk => tk.type === 'known' && tk.wordId).map(tk => tk.wordId))];
+    const awarded = [];
+    ids.forEach(id => {
+      const w = DB.getWord(id);
+      if (!w || DB.drillable(w)) return;          // conjugating → the drill's job
+      const cat = w.category;
+      const hadCat = DB.categoryStar(cat);
+      const hadGold = DB.stars(w).gold;
+      const res = DB.scoreGold(id);
+      if (!res.awarded) return;
+      awarded.push(w);
+      if (!hadGold && DB.stars(DB.getWord(id)).gold && window.Celebrate) Celebrate.fire('gold');
+      if (!hadCat && DB.categoryStar(cat) && window.Celebrate) {
+        setTimeout(() => Celebrate.fire('platinum'), 420);
+      }
+    });
+    return awarded;
+  }
+
   // ---- actions -------------------------------------------------
   function check(e) {
     e.preventDefault();
@@ -152,6 +192,13 @@ const Sentences = (() => {
     el('chkDetail').hidden = true;
     renderSentence(tokens);
     logConfidentMistakes(sentence, tokens);
+
+    const gained = awardSentenceGold(tokens);
+    const note = el('chkGold');
+    note.hidden = !gained.length;
+    if (gained.length) {
+      note.textContent = t('checker.goldAwarded', gained.map(w => w.kanji || w.reading).join('、'));
+    }
 
     const corrected = buildCorrected(tokens);
     el('chkCorrected').hidden = !corrected.anyChange;

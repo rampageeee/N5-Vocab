@@ -313,6 +313,12 @@ body {
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px; font-size: 1rem;
 }
+.fc-filters { display: flex; flex-direction: column; gap: .45rem; width: 100%; max-width: 320px; }
+.fc-filter {
+  display: flex; align-items: center; gap: .55rem;
+  font-size: .88rem; color: var(--text-dim); line-height: 1.3; cursor: pointer;
+}
+.fc-filter input { flex: none; width: 1.05rem; height: 1.05rem; accent-color: var(--kanji); }
 .fc-progress-num { font-size: .8rem; color: var(--text-dim); margin: .5rem 0; text-align: center; }
 
 .fc-stage { display: flex; flex-direction: column; align-items: center; gap: .9rem; }
@@ -353,6 +359,9 @@ body {
   border: 1px solid var(--border); border-radius: 10px;
 }
 .fc-answer .tool-btn { flex: none; }
+/* Answered-card state. Replaces the old `disabled` attribute, which blurred
+   the input and made the soft keyboard slam shut and reopen on every word. */
+.fc-answer input.is-locked { opacity: .55; }
 .fc-feedback { min-height: 1.4rem; font-size: .95rem; text-align: center; }
 .fc-feedback--ok   { color: #2f8f4e; }
 .fc-feedback--bad  { color: var(--danger); }
@@ -658,3 +667,116 @@ body {
   .hub { grid-template-columns: repeat(3, 1fr); }
   .palette-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+
+/* ---- verb-class audit -------------------------------------
+   The two options are deliberately wide, high-contrast rows of ACTUAL forms.
+   The grammar-class name is present but dimmed and small: reference, never
+   the question being asked. */
+.audit__intro { color: var(--text-dim); font-size: .88rem; line-height: 1.45; margin: 0 0 .9rem; }
+.audit__card {
+  padding: .8rem; margin-bottom: .8rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+}
+.audit__word { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem; margin-bottom: .2rem; }
+.audit__kanji { font-size: 1.3rem; color: var(--kanji); }
+.audit__reading { font-size: .95rem; color: var(--reading); }
+.audit__trans { font-size: .9rem; color: var(--trans); }
+.audit__q { font-size: .82rem; color: var(--text-dim); margin: .45rem 0 .5rem; }
+.audit__opts { display: flex; flex-direction: column; gap: .5rem; }
+.audit__opt {
+  display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+  width: 100%; padding: .6rem .7rem; text-align: left; cursor: pointer;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.audit__opt:active { border-color: var(--kanji); }
+.audit__forms { display: flex; flex-wrap: wrap; gap: .55rem; font-size: 1.05rem; }
+.audit__cls { flex: none; font-size: .72rem; color: var(--text-dim); }
+.audit__card--broken .audit__broken { font-size: .85rem; color: var(--danger); line-height: 1.45; }
+
+
+/* ---- kanji grid groups -------------------------------------
+   Priority set above, everything else below; inside each, unfinished
+   characters first and finished ones behind a fold. The fold defaults
+   shut — keeping completed work out of the eyeline is the whole point
+   of the split, and the count on the toggle still reports progress. */
+.kgroup { margin-bottom: 1.6rem; }
+.kgroup__title {
+  font-size: .95rem; font-weight: 600; color: var(--text);
+  margin: 0 0 .6rem; padding-bottom: .35rem;
+  border-bottom: 1px solid var(--border);
+}
+.kgroup__title small { font-weight: 400; color: var(--text-dim); margin-left: .3rem; }
+.kgroup__done-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  margin-top: .7rem; padding: .5rem .7rem; font-size: .85rem; cursor: pointer;
+  background: var(--surface-2); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+
+
+/* ---- drill card + category star ---------------------------- */
+.dr-card {
+  width: 100%; max-width: 320px; padding: 1.1rem; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+}
+.dr-word { font-size: 2rem; color: var(--kanji); line-height: 1.2; }
+.dr-reading { font-size: .95rem; color: var(--reading); margin-top: .15rem; }
+.dr-trans { font-size: .9rem; color: var(--trans); margin-top: .1rem; }
+.dr-target {
+  margin-top: .7rem; padding-top: .6rem; border-top: 1px solid var(--border);
+  font-size: 1rem; color: var(--text);
+}
+.chk-gold { margin: .5rem 0; font-size: .9rem; color: #2f8f4e; }
+
+/* Platinum: the category star. Kept in the same family as the other three
+   (same glyph, same dim/lit convention) rather than a separate badge — it's
+   the fourth rung of one ladder, not a different reward. */
+.star.p { color: var(--border); }
+.star.p.star--on { color: #8fb8d4; text-shadow: 0 0 4px rgba(143,184,212,.7); }
+
+/* ---- grammar: Learn pane -----------------------------------
+   Deliberately airier than the Rules pane. That one is a lookup table and
+   density helps it; this one is read start to finish, so it gets whitespace,
+   one idea per block, and the Japanese always larger than the English
+   scaffolding around it. */
+.lesson-stage { margin-bottom: 2.2rem; }
+.lesson-stage__title {
+  font-size: 1.05rem; font-weight: 600; color: var(--text);
+  margin: 0 0 .25rem; padding-bottom: .4rem; border-bottom: 2px solid var(--kanji);
+}
+.lesson-stage__blurb { font-size: .87rem; color: var(--text-dim); margin: 0 0 1.1rem; line-height: 1.5; }
+
+.lesson {
+  padding: 1rem; margin-bottom: 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+}
+.lesson__head { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; }
+.lesson__particle { font-size: 2.1rem; color: var(--kanji); line-height: 1; }
+.lesson__job { font-size: 1rem; color: var(--text); font-weight: 600; }
+.lesson__job em { font-weight: 400; font-size: .82rem; color: var(--text-dim); }
+.lesson__plain { font-size: .93rem; line-height: 1.6; color: var(--text); margin: .7rem 0 1rem; }
+
+.lesson-ex {
+  padding: .75rem; margin-bottom: .7rem;
+  background: var(--surface-2); border-radius: 10px;
+}
+.lesson-ex__jp { font-size: 1.2rem; color: var(--text); line-height: 1.5; }
+.lesson-ex__reading { font-size: .85rem; color: var(--reading); margin-top: .15rem; }
+.lesson-ex__gloss { display: flex; flex-wrap: wrap; gap: .35rem; margin: .6rem 0 .5rem; }
+.glossbox {
+  display: flex; flex-direction: column; gap: .1rem;
+  padding: .25rem .45rem; border-radius: 7px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.glossbox__jp { font-size: .95rem; color: var(--kanji); }
+.glossbox__en { font-size: .7rem; color: var(--text-dim); }
+.lesson-ex__en { font-size: .9rem; color: var(--trans); font-style: italic; }
+
+.lesson__watch {
+  font-size: .86rem; line-height: 1.55; color: var(--text);
+  padding: .6rem .7rem; border-left: 3px solid var(--kanji); border-radius: 0 8px 8px 0;
+  background: var(--surface-2);
+}
+.lesson__watch strong { color: var(--kanji); }
