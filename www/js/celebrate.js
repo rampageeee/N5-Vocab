@@ -56,19 +56,23 @@ const Celebrate = (() => {
     canvas = null; ctx = null;
   }
 
-  function mount(W, H) {
+  function mount(W, H, left, top) {
     teardown();   // a second star landing mid-run restarts cleanly rather than stacking canvases
-    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    // A DPR-3 fullscreen canvas repaints millions of pixels each frame on a
+    // phone. Two device pixels per CSS pixel keeps the effect smooth there.
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     canvas = document.createElement('canvas');
     canvas.width  = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     // The explicit CSS width/height are mandatory — see the file header.
     canvas.style.cssText =
-      'position:fixed;top:0;left:0;width:' + W + 'px;height:' + H + 'px;' +
+      'position:fixed;top:' + top + 'px;left:' + left + 'px;width:' + W + 'px;height:' + H + 'px;' +
       'z-index:9998;pointer-events:none';
     document.body.appendChild(canvas);
     ctx = canvas.getContext('2d');
+    if (!ctx) { teardown(); return false; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // draw in CSS-pixel coordinates
+    return true;
   }
 
   /* Every star enters off the left edge (or above it) and is given exactly
@@ -164,10 +168,12 @@ const Celebrate = (() => {
     // it the canvas is laid out against the pre-keyboard viewport and part of
     // the shower runs behind the keyboard.
     const vv = window.visualViewport;
-    const W = Math.round(vv ? vv.width  : window.innerWidth);
-    const H = Math.round(vv ? vv.height : window.innerHeight);
+    const W = Math.round(vv && vv.width ? vv.width : window.innerWidth);
+    const H = Math.round(vv && vv.height ? vv.height : window.innerHeight);
+    if (!W || !H) return;
 
-    mount(W, H);
+    if (!mount(W, H, vv && Number.isFinite(vv.offsetLeft) ? vv.offsetLeft : 0,
+      vv && Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0)) return;
     const dur = tier.ms / 1000;
     const parts = spawn(tier, W, H, dur);
     const start = performance.now();

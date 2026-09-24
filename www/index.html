@@ -132,6 +132,7 @@
           <select id="fcCategory"></select>
           <button class="tool-btn tool-btn--ghost fc-stop" id="fcStop" data-i18n="flash.stop" hidden>End</button>
         </div>
+        <div class="fc-categories" id="fcCategories"></div>
         <div class="fc-filters">
           <label class="fc-filter">
             <input type="checkbox" id="fcFilterToday">
@@ -258,6 +259,16 @@
     <section class="view" id="view-sentences">
       <div class="view__head"><h1 class="view__title" data-i18n="hub.sentences">Sentences</h1></div>
 
+      <div class="sp-picker">
+        <select id="spCategory" aria-label="Category"></select>
+        <input id="spSearch" type="search" data-i18n-ph="sentence.search" placeholder="Find a word…" autocomplete="off">
+      </div>
+      <div id="spWords" class="sp-words"></div>
+      <div id="spWork" class="sp-work" hidden></div>
+
+      <details class="sp-checker">
+        <summary data-i18n="sentence.freeCheck">Check your own sentence</summary>
+
       <form class="chk-form" id="chkForm">
         <textarea id="chkInput" rows="2" data-i18n-ph="checker.input.ph" placeholder="Type a sentence…"></textarea>
         <button type="submit" class="tool-btn" data-i18n="checker.check">Check</button>
@@ -265,7 +276,6 @@
 
       <div class="chk-output" id="chkOutput" hidden>
         <div class="chk-sentence jp" id="chkSentence"></div>
-        <div class="chk-gold" id="chkGold" hidden></div>
         <div class="chk-detail" id="chkDetail" hidden></div>
         <div class="chk-corrected" id="chkCorrected" hidden>
           <div class="chk-corrected__label" data-i18n="checker.corrected">Suggested correction</div>
@@ -273,6 +283,7 @@
           <div class="chk-corrected__note" id="chkCorrectedNote" hidden></div>
         </div>
       </div>
+      </details>
     </section>
 
     <section class="view" id="view-grammar">
@@ -407,6 +418,11 @@
             <option value="pl">Polski</option>
           </select>
         </div>
+        <div class="setting-row">
+          <span data-i18n="settings.previewMotion">Star animation</span>
+          <button type="button" class="tool-btn tool-btn--ghost" id="setPreviewMotion" data-i18n="settings.preview">Preview</button>
+        </div>
+        <p class="stub" id="setMotionStatus" hidden></p>
       </div>
 
       <div class="settings-group">
@@ -571,6 +587,7 @@
   <script src="js/grammar-lessons.js"></script>
   <script src="js/grammar.js"></script>
   <script src="js/checker.js"></script>
+  <script src="js/sentence-practice.js"></script>
   <script src="js/sentences.js"></script>
   <script src="js/drill.js"></script>
   <script src="js/review.js"></script>

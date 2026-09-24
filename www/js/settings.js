@@ -316,6 +316,12 @@ const Settings = (() => {
   function bind() {
     el('setDark').addEventListener('change', toggleDark);
     el('setLang').addEventListener('change', changeLang);
+    el('setPreviewMotion').addEventListener('click', () => {
+      const off = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el('setMotionStatus').hidden = !off;
+      if (off) el('setMotionStatus').textContent = t('settings.motionOff');
+      else if (window.Celebrate) Celebrate.fire('gold');
+    });
     el('setTolerance').addEventListener('change', e => DB.setTolerance(e.target.value));
     el('paletteGrid').addEventListener('click', e => {
       const b = e.target.closest('[data-palette]');

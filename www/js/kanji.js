@@ -262,9 +262,11 @@ const Kanji = (() => {
     cur = [pos(e)]; redrawInk();
   }
   function onMove(e) { if (cur) { cur.push(pos(e)); redrawInk(); } }
-  function onUp() {
+  function onUp(e) {
     if (!cur) return;
-    if (cur.length > 2) commitStroke(cur);
+    const end = pos(e);
+    if (Math.hypot(end.x - cur[cur.length - 1].x, end.y - cur[cur.length - 1].y) > 0.5) cur.push(end);
+    if (cur.length >= 2) commitStroke(cur);
     cur = null; redrawInk();
   }
 

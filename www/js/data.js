@@ -5,7 +5,7 @@
 
    STAR RULES (all derived, never stored on the word):
      bronze  = flashPoints    >= 5   (daily cadence)
-     gold    = sentencePoints >= 5
+     gold    = all three sentence exercises complete (legacy 5-point stars kept)
      silver  = every non-kana char in word.kanji has testPasses >= 5
 
    CONJUGATION CACHE (new)
@@ -29,7 +29,7 @@
 const DB = (() => {
   const KEY = 'n5data';
   const BRONZE_TARGET = 5;
-  const GOLD_TARGET   = 5;
+  const GOLD_TARGET   = 3;   // three sentence exercises for one word
   const SILVER_TARGET = 5;   // successful test-mode passes per kanji
   const MISTAKE_RESOLVE_TARGET = 5;   // consecutive correct reviews before a logged mistake resolves —
                                        // same number as bronze/gold/silver, one mastery rhythm app-wide
@@ -509,9 +509,11 @@ const DB = (() => {
   function updateWord(id, fields) {
     const w = getWord(id);
     if (!w) return false;
+    const oldHeadword = w.kanji || w.reading;
     ['kanji', 'reading', 'translation', 'pos'].forEach(k => {
       if (k in fields) w[k] = (fields[k] || '').trim();
     });
+    if (oldHeadword !== (w.kanji || w.reading)) delete w.sentencePractice;
     if ('verb_class' in fields) {
       w.verb_class = fields.verb_class || undefined;
       if (fields.verb_class) w.class_confirmed = true;
@@ -651,20 +653,43 @@ const DB = (() => {
     return { correct: true, awarded: true, cappedToday: false };
   }
 
-  /* Gold. One point per word per day, five to the star — the same cadence as
-     bronze, because the failure mode being guarded against is identical:
-     answering correctly five times in one sitting is short-term recall, not
-     retention. Reuses sentencePoints/lastSentenceDate, which were already in
-     the schema and never written to, so no migration. */
-  function scoreGold(id) {
+  // A word keeps one chosen example and the three completed exercises with
+  // it, so imports and phone backups preserve both the sentence and progress.
+  function sentencePractice(id) {
+    const p = getWord(id)?.sentencePractice;
+    return p ? { ...p, surfaces: [...p.surfaces], lemmas: [...p.lemmas],
+      baseWords: p.baseWords ? [...p.baseWords] : null, steps: [...p.steps] } : null;
+  }
+
+  function setSentencePractice(id, example) {
     const w = getWord(id);
-    if (!w) return { awarded: false, cappedToday: false, gold: false };
-    const today = todayStr();
-    if (w.lastSentenceDate === today) return { awarded: false, cappedToday: true, gold: stars(w).gold };
-    w.sentencePoints = (w.sentencePoints || 0) + 1;
-    w.lastSentenceDate = today;
+    if (!w || !example || !example.jp || !(example.en || example.pl) ||
+        !Array.isArray(example.surfaces) || example.surfaces.length < 2 ||
+        !Array.isArray(example.lemmas) || example.lemmas.length !== example.surfaces.length ||
+        example.surfaces.join('') !== example.jp.replace(/[\s。、！？!?.,「」『』]/g, '') ||
+        !example.surfaces.some(s => s === example.target)) return false;
+    w.sentencePractice = {
+      id: example.id || null, jp: example.jp, en: example.en, pl: example.pl || '',
+      surfaces: [...example.surfaces], lemmas: [...example.lemmas],
+      baseWords: Array.isArray(example.baseWords) ? [...example.baseWords] : null,
+      target: example.target, steps: [false, false, false]
+    };
     save();
-    return { awarded: true, cappedToday: false, gold: stars(w).gold };
+    return true;
+  }
+
+  function completeSentenceStep(id, step) {
+    const p = getWord(id)?.sentencePractice;
+    if (!p || !Number.isInteger(step) || step < 0 || step > 2 ||
+        (step > 0 && !p.steps[step - 1])) return false;
+    if (p.steps[step]) return true;
+    p.steps[step] = true;
+    save();
+    return true;
+  }
+
+  function sentenceProgress(id) {
+    return sentencePractice(id)?.steps || [false, false, false];
   }
 
   /* Category star. Every word in the category carrying all three — which is
@@ -707,7 +732,10 @@ const DB = (() => {
     return {
       bronze: (word.flashPoints || 0)    >= BRONZE_TARGET,
       silver,
-      gold:   (word.sentencePoints || 0) >= GOLD_TARGET
+      // Preserve stars earned under the former five-day drill, while new
+      // stars require all three exercises on the word's example sentence.
+      gold:   (word.sentencePoints || 0) >= 5 ||
+              (word.sentencePractice?.steps?.length === 3 && word.sentencePractice.steps.every(Boolean))
     };
   }
 
@@ -814,7 +842,8 @@ const DB = (() => {
     kanjiPriority, setKanjiPriority,
     kanaProgress, recordKanaPass, kanaTraceable,
     verbAudit, verbsNeedingAudit, previewForms, setVerbClass, inflectionKey,
-    scoreFlash, scoredToday, normKana, scoreGold,
+    scoreFlash, scoredToday, normKana,
+    sentencePractice, setSentencePractice, completeSentenceStep, sentenceProgress,
     drillFormsFor, drillable, acceptedForms, categoryStar, categoryProgress,
     getFlashFilters, setFlashFilter,
     stars, stats,

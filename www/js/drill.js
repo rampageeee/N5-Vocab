@@ -1,5 +1,5 @@
 /* ============================================================
-   DRILL  —  star 3 (gold), conjugating words
+   DRILL — extra practice for conjugating words
 
    The exercise the Star-3 design document calls Exercise 1: given a
    dictionary form and a target form, produce the conjugation. It needs
@@ -7,10 +7,8 @@
    already computed in data.js and were previously used only by the
    sentence checker.
 
-   Words that DON'T conjugate (雨, とても, コーヒー) can't be drilled and
-   never appear here. Their gold route is the Sentences tab — see
-   sentences.js — so both word shapes reach the same star by the work
-   that actually applies to them.
+   Gold is earned through the three exercises in Sentences. This standalone
+   drill remains available for extra repetition of verb/adjective forms.
 
    A verb whose class hasn't been settled is excluded by DB.drillFormsFor.
    Drilling an unaudited verb would teach whichever class the dropdown
@@ -128,18 +126,8 @@ const Drill = (() => {
     const fb = el('drFeedback');
 
     if (correct) {
-      const cat = w.category;
-      const hadCat = DB.categoryStar(cat);
-      const hadGold = DB.stars(w).gold;
-      const res = DB.scoreGold(w.id);
-      if (res.awarded) { fb.textContent = t('flash.correct'); fb.className = 'fc-feedback fc-feedback--ok'; }
-      else             { fb.textContent = t('flash.cappedToday'); fb.className = 'fc-feedback fc-feedback--dim'; }
-      // Gold first, then the category — if the same answer completes both,
-      // the bigger flourish is the one left on screen.
-      if (!hadGold && DB.stars(DB.getWord(w.id)).gold && window.Celebrate) Celebrate.fire('gold');
-      if (!hadCat && DB.categoryStar(cat) && window.Celebrate) {
-        setTimeout(() => Celebrate.fire('platinum'), 420);
-      }
+      fb.textContent = t('review.correct');
+      fb.className = 'fc-feedback fc-feedback--ok';
     } else {
       fb.innerHTML = `${esc(t('drill.wrong'))} <span class="jp">${esc(accepted[0] || '')}</span>`;
       fb.className = 'fc-feedback fc-feedback--bad';
@@ -181,13 +169,11 @@ const Drill = (() => {
     const wrap = el('drList');
     const words = DB.allWords().filter(DB.drillable);
     const rows = words.map(w => {
-      const st = DB.stars(w);
-      const gold = st.gold ? `<span class="star g star--on">★</span>` : '';
       return `<tr>
         <td class="cell-kanji">${esc(w.kanji) || '—'}</td>
         <td class="cell-reading">${esc(w.reading)}</td>
         <td class="cell-trans">${esc(w.translation)}</td>
-        <td class="fc-pts">${w.sentencePoints || 0} / ${DB.GOLD_TARGET} ${gold}</td>
+        <td class="fc-pts">${DB.sentenceProgress(w.id).filter(Boolean).length} / ${DB.GOLD_TARGET}</td>
       </tr>`;
     }).join('');
 

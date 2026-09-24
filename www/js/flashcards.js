@@ -73,7 +73,22 @@ const Flash = (() => {
     el('fcStop').hidden = true;
     el('fcList').hidden = false;
     el('fcRestart').hidden = true;
+    renderCategories();
     renderList();
+  }
+
+  function renderCategories() {
+    el('fcCategories').innerHTML = DB.categories().map(cat => {
+      const words = DB.wordsIn(cat);
+      const done = words.filter(w => DB.stars(w).bronze).length;
+      const complete = words.length > 0 && done === words.length;
+      return `<button type="button" class="fc-category ${el('fcCategory').value === cat ? 'fc-category--selected' : ''}"
+        data-fc-cat="${esc(cat)}" aria-label="${esc(cat)}: ${esc(t('flash.categoryBronze', done, words.length))}"
+        title="${esc(t('flash.categoryBronze', done, words.length))}">
+        <span class="star b ${complete ? 'star--on' : ''}" aria-hidden="true">★</span>
+        <span>${esc(cat)}</span><small>${done}/${words.length}</small>
+      </button>`;
+    }).join('');
   }
 
   const running = () => !el('fcStage').hidden;
@@ -100,6 +115,7 @@ const Flash = (() => {
   function start() {
     const cat = el('fcCategory').value;
     if (!cat) return;
+    renderCategories();
     const { words, total, filtered } = buildDeck(cat);
     if (total === 0)  { alert(t('flash.emptyCat'));      endSession(); return; }
     if (filtered)     { alert(t('flash.filteredEmpty')); endSession(); return; }
@@ -172,14 +188,15 @@ const Flash = (() => {
     const hadBronze = DB.stars(w).bronze;          // sampled BEFORE scoring
     const res = DB.scoreFlash(w.id, el('fcInput').value);
     const fb = el('fcFeedback');
+    const earnedBronze = res.awarded && !hadBronze && DB.stars(DB.getWord(w.id)).bronze;
     // Only on the point that actually crosses the threshold — not on every
     // correct answer, and never on a re-run of an already-starred word.
-    if (res.awarded && !hadBronze && DB.stars(DB.getWord(w.id)).bronze) {
+    if (earnedBronze) {
       if (window.Celebrate) Celebrate.fire('bronze');
     }
 
     if (res.correct) {
-      if (res.awarded)          { fb.textContent = t('flash.correct');     fb.className = 'fc-feedback fc-feedback--ok'; }
+      if (res.awarded)          { fb.textContent = t(earnedBronze ? 'flash.bronzeEarned' : 'flash.correct'); fb.className = 'fc-feedback fc-feedback--ok'; }
       else if (res.cappedToday) { fb.textContent = t('flash.cappedToday'); fb.className = 'fc-feedback fc-feedback--dim'; }
     } else {
       fb.textContent = t('flash.wrong');
@@ -190,6 +207,7 @@ const Flash = (() => {
     answered = true;
     lockInput(true);
     setAction('next');
+    renderCategories();
     renderList();
   }
 
@@ -216,6 +234,7 @@ const Flash = (() => {
     el('fcList').hidden = false;
     el('fcRestart').hidden = true;
     el('fcCategory').value = '';   // reset so re-picking fires change again
+    renderCategories();
     renderList();
   }
 
@@ -267,6 +286,12 @@ const Flash = (() => {
   // ---- bind ------------------------------------------------
   function bind() {
     el('fcCategory').addEventListener('change', start);
+    el('fcCategories').addEventListener('click', e => {
+      const b = e.target.closest('[data-fc-cat]');
+      if (!b) return;
+      el('fcCategory').value = b.dataset.fcCat;
+      start();
+    });
     el('fcStop').addEventListener('click', endSession);
     el('fcFilterToday').addEventListener('change',
       e => onFilterChange('hideScoredToday', e.target.checked));

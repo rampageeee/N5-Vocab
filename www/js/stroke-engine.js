@@ -19,8 +19,9 @@ const StrokeEngine = (() => {
 
   /* ---------- KanjiVG path parse ---------- */
   function parsePath(d) {
-    const toks = d.match(/[MmLlCcZz]|-?\d*\.?\d+(?:e-?\d+)?/g) || [];
+    const toks = d.match(/[MmLlCcSsZz]|-?\d*\.?\d+(?:e-?\d+)?/g) || [];
     let i = 0, cx = 0, cy = 0, start = null, pts = [], cmd = null;
+    let lastControl = null;
     const num = () => parseFloat(toks[i++]);
     function cubic(x0, y0, x1, y1, x2, y2, x3, y3) {
       for (let s = 1; s <= 18; s++) {
@@ -37,16 +38,26 @@ const StrokeEngine = (() => {
       if (cmd === 'M' || cmd === 'm') {
         let x = num(), y = num(); if (cmd === 'm') { x += cx; y += cy; }
         cx = x; cy = y; start = { x, y }; pts.push({ x, y });
+        lastControl = null;
         cmd = (cmd === 'M') ? 'L' : 'l';
       } else if (cmd === 'L' || cmd === 'l') {
         let x = num(), y = num(); if (cmd === 'l') { x += cx; y += cy; }
-        pts.push({ x, y }); cx = x; cy = y;
+        pts.push({ x, y }); cx = x; cy = y; lastControl = null;
       } else if (cmd === 'C' || cmd === 'c') {
         let x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num();
         if (cmd === 'c') { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy; }
         cubic(cx, cy, x1, y1, x2, y2, x, y); cx = x; cy = y;
+        lastControl = { x: x2, y: y2 };
+      } else if (cmd === 'S' || cmd === 's') {
+        let x2 = num(), y2 = num(), x = num(), y = num();
+        if (cmd === 's') { x2 += cx; y2 += cy; x += cx; y += cy; }
+        const x1 = lastControl ? 2 * cx - lastControl.x : cx;
+        const y1 = lastControl ? 2 * cy - lastControl.y : cy;
+        cubic(cx, cy, x1, y1, x2, y2, x, y); cx = x; cy = y;
+        lastControl = { x: x2, y: y2 };
       } else if (cmd === 'Z' || cmd === 'z') {
         if (start) pts.push({ x: start.x, y: start.y });
+        lastControl = null;
       } else { i++; }
     }
     return pts;
