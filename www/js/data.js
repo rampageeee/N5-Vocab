@@ -31,8 +31,7 @@ const DB = (() => {
   const BRONZE_TARGET = 5;
   const GOLD_TARGET   = 3;   // three sentence exercises for one word
   const SILVER_TARGET = 5;   // successful test-mode passes per kanji
-  const MISTAKE_RESOLVE_TARGET = 5;   // consecutive correct reviews before a logged mistake resolves —
-                                       // same number as bronze/gold/silver, one mastery rhythm app-wide
+  const MISTAKE_RESOLVE_TARGET = 5;   // consecutive correct reviews before a logged mistake resolves
 
   const blank = () => ({
     categories: [],
@@ -209,7 +208,7 @@ const DB = (() => {
     return {};
   }
 
-  /* Which forms the gold drill may ask for. ば and the potential are
+  /* Which forms the standalone word-form drill may ask for. ば and the potential are
      generated (the sentence checker needs them) but deliberately NOT drilled
      — both are N4 material, and a beginner drill that quizzes them is
      testing the wrong syllabus. */
@@ -735,7 +734,7 @@ const DB = (() => {
       // Preserve stars earned under the former five-day drill, while new
       // stars require all three exercises on the word's example sentence.
       gold:   (word.sentencePoints || 0) >= 5 ||
-              (word.sentencePractice?.steps?.length === 3 && word.sentencePractice.steps.every(Boolean))
+              !!(word.sentencePractice?.steps?.length === 3 && word.sentencePractice.steps.every(Boolean))
     };
   }
 

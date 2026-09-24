@@ -1,18 +1,14 @@
 /* ============================================================
    DRILL — extra practice for conjugating words
 
-   The exercise the Star-3 design document calls Exercise 1: given a
-   dictionary form and a target form, produce the conjugation. It needs
-   no corpus, no tokenizer and no bundled sentence index — the forms are
-   already computed in data.js and were previously used only by the
-   sentence checker.
+   Given a dictionary form and a target form, produce the conjugation.
+   It uses the forms already computed in data.js.
 
    Gold is earned through the three exercises in Sentences. This standalone
    drill remains available for extra repetition of verb/adjective forms.
 
    A verb whose class hasn't been settled is excluded by DB.drillFormsFor.
-   Drilling an unaudited verb would teach whichever class the dropdown
-   happened to default to, with a score attached to it.
+   Drilling an unaudited verb could teach the wrong class.
 
    Keyboard handling mirrors flashcards.js deliberately: the input is
    never disabled and the action button suppresses its own pointerdown,
@@ -173,7 +169,7 @@ const Drill = (() => {
         <td class="cell-kanji">${esc(w.kanji) || '—'}</td>
         <td class="cell-reading">${esc(w.reading)}</td>
         <td class="cell-trans">${esc(w.translation)}</td>
-        <td class="fc-pts">${DB.sentenceProgress(w.id).filter(Boolean).length} / ${DB.GOLD_TARGET}</td>
+        <td class="fc-pts">${DB.drillFormsFor(w).length}</td>
       </tr>`;
     }).join('');
 
@@ -181,14 +177,14 @@ const Drill = (() => {
       <table>
         <thead><tr>
           <th>${esc(t('th.kanji'))}</th><th>${esc(t('th.hiragana'))}</th>
-          <th>${esc(t('th.trans'))}</th><th class="fc-pts">${esc(t('flash.pts'))}</th>
+          <th>${esc(t('th.trans'))}</th><th class="fc-pts">${esc(t('drill.formsCount'))}</th>
         </tr></thead>
         <tbody>${rows || `<tr><td colspan="4" class="stub">${esc(t('drill.noneDrillable'))}</td></tr>`}</tbody>
       </table>` : '';
 
     wrap.innerHTML = `
       <button class="fc-list__toggle" id="drListToggle" aria-expanded="${poolOpen}">
-        <span>${esc(t('flash.progress'))} (${words.length})</span>
+        <span>${esc(t('drill.pool'))} (${words.length})</span>
         <span class="fc-list__chev">${poolOpen ? '▾' : '▸'}</span>
       </button>
       <div class="fc-list__body" ${poolOpen ? '' : 'hidden'}>${body}</div>`;

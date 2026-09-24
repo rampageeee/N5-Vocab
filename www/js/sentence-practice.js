@@ -66,16 +66,22 @@ const SentencePractice = (() => {
     select.innerHTML = `<option value="__all__">${esc(t('flash.allCats'))}</option>`
       + DB.categories().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
     select.value = category;
-    el('spSearch').value = search;
+    if (el('spSearch').value !== search) el('spSearch').value = search;
     const words = (category === '__all__' ? DB.allWords() : DB.wordsIn(category))
       .filter(w => !search || [w.kanji, w.reading, w.translation].some(s =>
         String(s || '').toLocaleLowerCase().includes(search.toLocaleLowerCase())));
+    if (selected && !words.some(w => w.id === selected)) {
+      selected = null;
+      el('spWork').hidden = true;
+      resetAttempt();
+    }
     el('spWords').innerHTML = words.length ? words.map(w => {
       const done = DB.sentenceProgress(w.id).filter(Boolean).length;
+      const gold = DB.stars(w).gold;
       return `<button type="button" class="sp-word ${w.id === selected ? 'sp-word--selected' : ''}"
           data-sp-word="${esc(w.id)}">
         <span class="jp">${esc(head(w))}</span><span>${esc(w.translation)}</span>
-        <span class="sp-word__count">${done}/3 ${done === 3 ? '<span class="star g star--on">★</span>' : ''}</span>
+        <span class="sp-word__count">${done}/3 ${gold ? `<span class="star g star--on" title="${esc(t('sentence.goldEarned'))}">★</span>` : ''}</span>
       </button>`;
     }).join('') : `<p class="stub">${esc(t('flash.noWords'))}</p>`;
   }

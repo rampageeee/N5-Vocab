@@ -62,6 +62,7 @@ test('a custom sentence works without the sentence bank and old gold stars survi
   const db = get('DB'), practice = get('SentencePractice');
   db.addCategory('N5');
   const word = db.addWord({ kanji: '猫', reading: 'ねこ', translation: 'cat', pos: 'noun', category: 'N5' });
+  assert.equal(db.stars(word).gold, false);
   assert.equal(practice.candidates(word).length, 0);
   assert.equal(db.setSentencePractice(word.id, {
     jp: '猫がいます。', pl: 'Jest kot.', target: '猫',
