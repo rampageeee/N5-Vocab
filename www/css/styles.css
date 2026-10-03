@@ -870,3 +870,6 @@ body {
 .storage-status { position: fixed; bottom: 0; inset-inline: 0; z-index: 100; padding: 12px; background: #842424; color: #fff; font-size: 14px; }
 .storage-status:not([hidden]) { display: block; }
 body:has(.storage-status:not([hidden])) { padding-bottom: 85px; }
+
+.lesson-sources { margin-block: 12px; font-size: 13px; color: var(--text-dim); }
+.lesson-sources a { color: var(--text); text-decoration: underline; }

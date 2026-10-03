@@ -34,20 +34,28 @@ const Grammar = (() => {
     return `<div class="lesson-ex">
       <div class="lesson-ex__jp jp">${esc(ex.jp)}</div>
       ${ex.reading ? `<div class="lesson-ex__reading jp">${esc(ex.reading)}</div>` : ''}
+      ${DB.getLocale() === 'pl' ? '<small>English glosses</small>' : ''}
       <div class="lesson-ex__gloss">${parts}</div>
-      <div class="lesson-ex__en">${esc(ex.en)}</div>
+      <div class="lesson-ex__en">${esc(DB.getLocale() === 'pl' ? ex.pl || ex.en : ex.en)}</div>
     </div>`;
   }
 
+  function sourceHTML(review) {
+    if (!review) return '';
+    return `<div class="lesson-sources"><small>${esc(t('grammar.reviewedScope'))}</small> ${review.sources.map((url, i) =>
+      `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">TUFS ${i + 1}</a>`).join(' · ')}</div>`;
+  }
   function lessonHTML(it, id) {
+    const text = DB.getLocale() === 'pl' ? { ...it, ...(it.pl || {}) } : it;
     return `<article class="lesson" id="${id}">
       <header class="lesson__head">
         <span class="lesson__particle jp">${esc(it.particle)}</span>
-        <span class="lesson__job">${esc(it.job)}${it.say ? ` <em>(${esc(it.say)})</em>` : ''}</span>
+        <span class="lesson__job">${esc(text.job)}${text.say ? ` <em>(${esc(text.say)})</em>` : ''}</span>
       </header>
-      <p class="lesson__plain">${esc(it.plain)}</p>
+      <p class="lesson__plain">${esc(text.plain)}</p>
       ${(it.examples || []).map(exampleHTML).join('')}
-      ${it.watch ? `<div class="lesson__watch"><strong>${esc(t('grammar.watch'))}</strong> ${esc(it.watch)}</div>` : ''}
+      ${text.watch ? `<div class="lesson__watch"><strong>${esc(t('grammar.watch'))}</strong> ${esc(text.watch)}</div>` : ''}
+      ${sourceHTML(it.review)}
     </article>`;
   }
 
@@ -68,13 +76,13 @@ const Grammar = (() => {
       }).join('');
       return `
       <section class="lesson-stage" id="lesson-${i}">
-        <h2 class="lesson-stage__title">${esc(g.stage)}</h2>
-        <p class="lesson-stage__blurb">${esc(g.blurb)}</p>
+        <h2 class="lesson-stage__title">${esc(DB.getLocale() === 'pl' ? g.stage_pl || g.stage : g.stage)}</h2>
+        <p class="lesson-stage__blurb">${esc(DB.getLocale() === 'pl' ? g.blurb_pl || g.blurb : g.blurb)}</p>
         ${items}
       </section>`;
     }).join('');
     el('gramLearnToc').innerHTML = toc.join('');
-    el('gramLearnBody').innerHTML = body;
+    el('gramLearnBody').innerHTML = `<p class="gram-callout">${esc(t('grammar.learningScope'))}</p>` + body;
   }
 
   // ---- Reference pane ---------------------------------------
@@ -99,6 +107,7 @@ const Grammar = (() => {
       <div class="gram-rule__pattern jp">${esc(r.pattern)}</div>
       ${r.gloss ? `<div class="gram-rule__gloss">${esc(r.gloss)}</div>` : ''}
       ${examples}
+      ${sourceHTML(r.review)}
     </div>`;
   }
 

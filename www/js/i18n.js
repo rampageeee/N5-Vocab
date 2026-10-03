@@ -108,6 +108,8 @@ const I18N = (() => {
       'kana.loadFail': 'Kana stroke data not available yet — see data/kana-data.js.',
       /* grammar */
       'grammar.learn': 'Learn', 'grammar.reference': 'Rules', 'grammar.mine': 'My notes',
+      'grammar.learningScope': 'Selected beginner uses, not an exhaustive official N5 list. Patterns have linked sources; examples and translations still benefit from fluent-speaker review.',
+      'grammar.reviewedScope': 'Pattern reviewed; selected uses.',
       'grammar.watch': 'Watch out:',
       'grammar.legend': 'Notation legend ▸', 'grammar.final': 'sentence-final',
       'grammar.add': '+ Add pattern',
@@ -303,6 +305,8 @@ const I18N = (() => {
       'kana.gojuon': 'Gojūon', 'kana.dakuten': 'Dakuten / handakuten', 'kana.yoon': 'Yōon',
       'kana.loadFail': 'Dane kresek kana nie są jeszcze dostępne — zobacz data/kana-data.js.',
       'grammar.learn': 'Nauka', 'grammar.reference': 'Zasady', 'grammar.mine': 'Moje notatki',
+      'grammar.learningScope': 'Wybrane użycia dla początkujących, nie kompletna oficjalna lista N5. Konstrukcje mają źródła; przykłady i tłumaczenia nadal wymagają redakcji przez osobę biegłą.',
+      'grammar.reviewedScope': 'Sprawdzono konstrukcję; wybrane użycia.',
       'grammar.watch': 'Uwaga:',
       'grammar.legend': 'Legenda oznaczeń ▸', 'grammar.final': 'kończąca zdanie',
       'grammar.add': '+ Dodaj wzorzec',
