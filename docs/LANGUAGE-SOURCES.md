@@ -14,3 +14,12 @@ Reviewed 2026-10-04. These are references for specific claims, not certification
 | かっこいい | [Tae Kim, Negative State of Being](https://guidetojapanese.org/learn/complete/negative_stateofbeing) | Author's published lesson identifies いい and かっこいい as derived from 良い. The search index supplied this text; direct page retrieval timed out. Regression covers the resulting よ-based forms, including orthographic variants. |
 
 Kana/kanji acceptance is an application grading policy: equivalent inflected dictionary spellings count, while a manually overridden form is authoritative. An unconfirmed ambiguous verb produces no claimed conjugations. Editing kanji/reading/POS discards word-specific overrides and class confirmation; translation/category edits preserve them.
+
+| Checker construction | Source | Review |
+| --- | --- | --- |
+| Nominalizing の | [TUFS 080](https://www.coelang.tufs.ac.jp/mt/ja/gmod/contents/explanation/080.html) | Vの functions as a noun; not restricted to noun + の + noun |
+| Quoting と | [TUFS 077](https://www.coelang.tufs.ac.jp/mt/ja/gmod/contents/explanation/077.html) | Plain clauses before と思います are valid |
+| Conjoining が | [TUFS 082](https://www.coelang.tufs.ac.jp/mt/ja/gmod/contents/explanation/082.html) | が can join clauses, including polite predicates |
+| Copula scope | [TUFS 042](https://www.coelang.tufs.ac.jp/mt/ja/gmod/contents/card/042.html) | Ordinary verbs use their own polite forms; the checker flags only direct だ/です after a known dictionary/polite verb form, without crossing punctuation |
+
+Particle choice is deliberately unassessed. No replacement or stored quiz is inferred from part-of-speech patterns. Bare stems, unconfirmed verb classes, unknown endings and unknown words receive no confident correction. Form-table exercises accept kana/kanji spellings of that same form. Previously logged unsupported mistakes remain in exports but are excluded from practice. No highlight is not a correctness certificate.

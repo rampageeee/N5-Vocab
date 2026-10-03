@@ -325,33 +325,24 @@ const DB = (() => {
     save();
   }
 
-  // ---- mistake log (§3.7) --------------------------------------
-  // correct_tokens is a SET, not a single value. Testing showed requiring
-  // exactly one confident candidate — the bar the inline "suggested
-  // correction" box uses — meant almost NOTHING would ever get logged for
-  // particle mistakes: の/と/や all share the same noun-noun shape, は/が/
-  // に/も/まで all share noun-predicate, so a real violation's candidate
-  // set is nearly always 3–8 particles, never exactly 1. Logging accepts
-  // any violation/error with AT LEAST ONE known candidate (i.e. anything
-  // the checker could actually explain), and review scoring accepts ANY
-  // of that set as correct — same "don't claim one truth when several fit"
-  // principle the inline suggestion box already uses, just applied to
-  // what gets persisted instead of only what's shown once inline.
-  function activeMistakes() { return state.mistakes.filter(m => !m.resolved); }
+  // Only documented form-table conflicts become exercises. Legacy guessed
+  // particle replacements stay exportable but are excluded from active review.
+  function activeMistakes() { return state.mistakes.filter(m => !m.resolved && m.evidence === 'form-table'); }
   function allMistakes()    { return [...state.mistakes]; }
   function getMistake(id)   { return state.mistakes.find(m => m.id === id) || null; }
 
-  function logMistake({ kind, original_sentence, wrong_token, correct_tokens, rule_violated }) {
+  function logMistake({ kind, original_sentence, wrong_token, correct_tokens, rule_violated, evidence }) {
+    if (evidence !== 'form-table' || kind !== 'conjugation') return null;
     if (!correct_tokens || !correct_tokens.length) return null;   // nothing to quiz on — don't log
     // Dedup on (sentence, wrong_token) only — for a given context the
     // candidate set is deterministic, so re-checking the same draft
     // sentence repeatedly doesn't pile up duplicate active entries.
-    const dup = state.mistakes.find(m => !m.resolved
+    const dup = state.mistakes.find(m => !m.resolved && m.evidence === evidence
       && m.original_sentence === original_sentence
       && m.wrong_token === wrong_token);
     if (dup) return dup;
     const m = {
-      id: uid(), kind,
+      id: uid(), kind, evidence,
       original_sentence, wrong_token, correct_tokens: [...correct_tokens], rule_violated,
       date: new Date().toISOString(),
       resolved: false, streak: 0
@@ -367,7 +358,7 @@ const DB = (() => {
   // in Review counts toward the streak.
   function scoreMistake(id, typed) {
     const m = getMistake(id);
-    if (!m) return { correct: false, resolved: false, streak: 0 };
+    if (!m || m.evidence !== 'form-table') return { correct: false, resolved: false, streak: 0 };
     const norm = normKana(typed);
     const correct = norm !== '' && m.correct_tokens.some(c => normKana(c) === norm);
     if (correct) {

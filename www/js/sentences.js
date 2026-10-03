@@ -106,47 +106,13 @@ const Sentences = (() => {
         if (v.correctToken) { text += v.correctToken; anyChange = true; }
         else { text += tok.text; anyAmbiguous = true; }
       } else if (tok.type === 'conjugation-error') {
-        if (tok.suggestions && tok.suggestions.length === 1) { text += tok.suggestions[0]; anyChange = true; }
+        if (tok.confidence === 'confirmed' && tok.suggestions?.length) { text += tok.suggestions[0]; anyChange = true; }
         else { text += tok.text; if (tok.suggestions && tok.suggestions.length > 1) anyAmbiguous = true; }
       } else {
         text += tok.text;
       }
     });
     return { text, anyChange, anyAmbiguous };
-  }
-
-  // Logs every violation/error the checker could explain at all — i.e. has
-  // AT LEAST ONE known candidate/suggestion, even if there are several and
-  // no single one is confidently "the" answer. This is deliberately a
-  // LOOSER bar than buildCorrected()'s inline "suggested correction" box
-  // (which only shows when exactly one fits): testing showed requiring
-  // exactly one meant particle mistakes almost never got logged at all,
-  // since so many coarse particles share an identical shape. Review then
-  // accepts ANY of the logged candidates as correct — same principle,
-  // applied to what's persisted rather than only what's shown once inline.
-  function logConfidentMistakes(sentence, tokens) {
-    tokens.forEach(tok => {
-      if (tok.type === 'particle' && tok.violations && tok.violations.length) {
-        tok.violations.forEach(v => {
-          if (!v.candidates.length) return;   // truly nothing fits — no answer to quiz on
-          DB.logMistake({
-            kind: 'particle',
-            original_sentence: sentence,
-            wrong_token: tok.particle,
-            correct_tokens: v.candidates,
-            rule_violated: particleViolationMsg(tok, v)
-          });
-        });
-      } else if (tok.type === 'conjugation-error' && tok.suggestions && tok.suggestions.length) {
-        DB.logMistake({
-          kind: 'conjugation',
-          original_sentence: sentence,
-          wrong_token: tok.text,
-          correct_tokens: tok.suggestions,
-          rule_violated: detailForConj(tok)
-        });
-      }
-    });
   }
 
   // ---- actions -------------------------------------------------
@@ -161,7 +127,8 @@ const Sentences = (() => {
     el('chkOutput').hidden = false;
     el('chkDetail').hidden = true;
     renderSentence(tokens);
-    logConfidentMistakes(sentence, tokens);
+    ParticleChecker.logConfidentMistakes(sentence, tokens);
+    el('chkCoverage').textContent = t('checker.limited');
 
     const corrected = buildCorrected(tokens);
     el('chkCorrected').hidden = !corrected.anyChange;
