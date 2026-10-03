@@ -8,23 +8,9 @@
      gold    = all three sentence exercises complete (legacy 5-point stars kept)
      silver  = every non-kana char in word.kanji has testPasses >= 5
 
-   CONJUGATION CACHE (new)
-     verb_class: "godan"|"ichidan"|"irregular" — the ONE new schema
-     field (gated on pos==='verb'). Everything else the sentence-
-     checker spec asked for already exists: adj_class is just pos
-     ('i-adj'/'na-adj'), hiragana/meaning are reading/translation.
-     `category` is the user's own freeform grouping and is never
-     touched by any of this.
-
-     w.forms holds the precomputed conjugated surface forms (built
-     once on add/edit, not per sentence-check). Two rule tables stay
-     separate on purpose (row-stem swap vs onbin) — collapsing them
-     is exactly where て/た-form mistakes creep in. w.irregular_forms
-     is a per-word override merged on top of the generated forms —
-     visible in the data (inspectable, exportable, editable) rather
-     than a shadow rule the data layer hides. The four known N5
-     exceptions (する/来る/行く/ある) auto-seed this field the first
-     time a matching headword is saved; nothing else does.
+   Conjugation comes from js/conjugation.js. Generated exceptions are pure
+   rules rather than stored overrides; legacy/manual irregular_forms remain
+   exportable and are discarded when the word's identity changes.
    ============================================================ */
 const DB = (() => {
   const KEY = 'n5data';
@@ -155,288 +141,33 @@ const DB = (() => {
 
   const uid = () => 'w_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  // ---- conjugation tables (§0.1) ----------------------------
-  // Table A — row-stem swap, GODAN only. u-row kana → i/a/e row of the
-  // same consonant. う's a-row is わ, not あ — the one exception baked
-  // into the table itself so callers never have to special-case it.
-  const GODAN_ROW = {
-    'う': { i:'い', a:'わ', e:'え' }, 'く': { i:'き', a:'か', e:'け' },
-    'ぐ': { i:'ぎ', a:'が', e:'げ' }, 'す': { i:'し', a:'さ', e:'せ' },
-    'つ': { i:'ち', a:'た', e:'て' }, 'ぬ': { i:'に', a:'な', e:'ね' },
-    'ぶ': { i:'び', a:'ば', e:'べ' }, 'む': { i:'み', a:'ま', e:'め' },
-    'る': { i:'り', a:'ら', e:'れ' }
-  };
-  // Table B — onbin (て/た), GODAN only, keyed on final kana. Governed by
-  // the verb's own last kana, NOT one blanket "godan" rule.
-  const ONBIN = {
-    'く': { te:'いて', ta:'いた' }, 'ぐ': { te:'いで', ta:'いだ' },
-    'う': { te:'って', ta:'った' }, 'つ': { te:'って', ta:'った' }, 'る': { te:'って', ta:'った' },
-    'ぬ': { te:'んで', ta:'んだ' }, 'ぶ': { te:'んで', ta:'んだ' }, 'む': { te:'んで', ta:'んだ' },
-    'す': { te:'して', ta:'した' }
-  };
-
-  const headword = w => w.kanji || w.reading || '';
-
-  function genGodan(word) {
-    const last = word.slice(-1), stem = word.slice(0, -1);
-    const rowT = GODAN_ROW[last], onb = ONBIN[last];
-    if (!rowT || !onb) return {};   // not a real godan ending — leave empty, never guess
-    return {
-      masu: stem + rowT.i + 'ます', masen: stem + rowT.i + 'ません',
-      nai:  stem + rowT.a + 'ない',
-      ta:   stem + onb.ta,          te:    stem + onb.te,
-      ba:   stem + rowT.e + 'ば',
-      potential: stem + rowT.e + 'る'   // required for GA-2 (…が話せます-type predicates)
-    };
-  }
-  function genIchidan(word) {
-    const stem = word.slice(0, -1);   // drop る, attach directly — no onbin step
-    return {
-      masu: stem + 'ます', masen: stem + 'ません', nai: stem + 'ない',
-      ta: stem + 'た', te: stem + 'て', ba: stem + 'れば', potential: stem + 'られる'
-    };
-  }
-  // する-compounds (勉強する, 電話する, 買い物する…). Extremely common at N5,
-  // and previously produced NO forms at all: verb_class 'irregular' returned
-  // {} and only bare する/来る were rescued by the exception table.
-  function genSuru(key) {
-    const stem = key.slice(0, -2);   // drop する
-    return {
-      masu: stem + 'します', masen: stem + 'しません', nai: stem + 'しない',
-      ta: stem + 'した', te: stem + 'して', ba: stem + 'すれば', potential: stem + 'できる'
-    };
-  }
-
-  // Adjectives: row-stem-style, no onbin step.
-  function genAdj(w, key) {
-    if (w.pos === 'i-adj') {
-      const stem = key.slice(0, -1);   // drop い
-      return { past: stem + 'かった', negative: stem + 'くない' };
-    }
-    return { past: key + 'だった', negative: key + 'じゃない' };   // na-adj
-  }
-
-  /* THE form builder. regenerateForms, previewForms and acceptedForms all
-     route through this one function — three callers deriving conjugations
-     three slightly different ways is exactly how a drill ends up marking a
-     correct answer wrong. */
-  function buildForms(w, cls, key) {
-    if (!key) return {};
-    if (w.pos === 'verb') {
-      return cls === 'ichidan'   ? genIchidan(key)
-           : cls === 'irregular' ? (/する$/.test(key) ? genSuru(key) : {})
-           : genGodan(key);
-    }
-    if (w.pos === 'i-adj' || w.pos === 'na-adj') return genAdj(w, key);
-    return {};
-  }
-
-  /* Which forms the standalone word-form drill may ask for. ば and the potential are
-     generated (the sentence checker needs them) but deliberately NOT drilled
-     — both are N4 material, and a beginner drill that quizzes them is
-     testing the wrong syllabus. */
-  const DRILL_FORMS = {
-    verb:     ['masu', 'masen', 'nai', 'ta', 'te'],
-    'i-adj':  ['past', 'negative'],
-    'na-adj': ['past', 'negative']
-  };
+  // Pure morphology is shared; only persistence/word lookup lives in DB.
+  const inflectionKey = Conjugation.key;
+  const verbAudit = Conjugation.audit;
+  const regenerateForms = Conjugation.regenerate;
+  const previewForms = (w, cls) => Conjugation.forms(w, cls);
+  const acceptedForms = Conjugation.accepted;
+  const DRILL_FORMS = { verb: ['masu', 'masen', 'mashita', 'masendeshita', 'nai', 'nakatta', 'ta', 'te'],
+    'i-adj': ['past', 'negative', 'pastNegative'], 'na-adj': ['past', 'negative', 'pastNegative'] };
   function drillFormsFor(w) {
-    if (!w || !DRILL_FORMS[w.pos]) return [];
-    if (w.pos === 'verb' && !w.class_confirmed) return [];   // unaudited class — never drill a guess
-    const f = w.forms || {};
-    return DRILL_FORMS[w.pos].filter(k => f[k]);
+    if (!w || (w.pos === 'verb' && !w.class_confirmed)) return [];
+    return (DRILL_FORMS[w.pos] || []).filter(k => w.forms?.[k]);
   }
-  function drillable(w) { return drillFormsFor(w).length > 0; }
-
-  /* Every spelling that counts as right. The kanji form is canonical, but a
-     learner typing the all-kana version has not made a mistake — script
-     choice isn't a conjugation error at N5. A pinned irregular form is
-     authoritative: 行く's て-form is 行って, and the regular godan machinery
-     would happily "accept" 行いて if we merged instead of replacing. */
-  function acceptedForms(w, formKey) {
-    const out = new Set();
-    const add = v => { if (v) out.add(v); };
-    const ov = (w.irregular_forms || {})[formKey];
-    const readingEx = KNOWN_VERB_EXCEPTIONS[(w.reading || '').trim()];
-    if (ov) {
-      add(ov);
-      if (readingEx) add(readingEx[formKey]);
-      return [...out];
-    }
-    add(buildForms(w, w.verb_class, inflectionKey(w))[formKey]);
-    const r = (w.reading || '').trim();
-    if (r) add(buildForms(w, w.verb_class, r)[formKey]);
-    return [...out];
-  }
-
-  // ---- §0.2 closed exception set (exactly four) -------------
-  // Stored as a per-word `irregular_forms` override rather than a hidden
-  // lookup — visible in exported data, inspectable, and the same
-  // mechanism a future genuinely-new exception would use, without a
-  // schema change. This function is the ONLY thing that writes to it
-  // automatically, and only the first time (never clobbers a manual edit).
-  const KNOWN_VERB_EXCEPTIONS = {
-    'する':  { masu:'します', masen:'しません', nai:'しない', ta:'した', te:'して', ba:'すれば', potential:'できる' },
-    'くる':  { masu:'きます', masen:'きません', nai:'こない', ta:'きた', te:'きて', ba:'くれば', potential:'こられる' },
-    '来る':  { masu:'来ます', masen:'来ません', nai:'来ない', ta:'来た', te:'来て', ba:'来れば', potential:'来られる' },
-    '行く':  { te:'行って', ta:'行った' },     // godan; only onbin disagrees (行いて would be wrong)
-    'いく':  { te:'いって', ta:'いった' },
-    'ある':  { nai:'ない' }                    // suppletive negative — NOT あらない
-    // 帰る is deliberately NOT here: verb_class:"godan" + plain onbin
-    // already yields 帰って correctly on its own.
-  };
-  function seedKnownVerbException(w) {
-    if (w.irregular_forms) return;             // never overwrite an existing/manual override
-    const hit = KNOWN_VERB_EXCEPTIONS[headword(w)];
-    if (hit) w.irregular_forms = Object.assign({}, hit);
-  }
-  /* ---- verb-class audit (§ ichidan-lookalike problem) --------
-     Ichidan verbs ALWAYS end in る, and the kana before that る is always
-     from the i-row or the e-row. That makes most verbs unambiguous by
-     inspection alone, and only a narrow band genuinely uncertain:
-
-       ends in く/む/す/ぐ/ぶ/つ/ぬ/う   → godan, no other option exists
-       ends in る, prev kana NOT i/e row → godan (分かる, 作る, 乗る…)
-       ends in する / 来る / くる         → irregular
-       ends in -iru / -eru               → AMBIGUOUS unless known lookalike
-
-     Only that last band reaches a human. The lookalike list is matched on
-     the KANJI form only, deliberately: the kana forms collide with genuine
-     ichidan verbs (いる = 要る godan but also 居る ichidan; きる = 切る godan
-     but also 着る ichidan), so auto-classifying a kana-only entry would be
-     guessing. Kana-only -iru/-eru verbs go to the human every time. */
-  const GODAN_LOOKALIKES = new Set(
-    ['帰る', '入る', '走る', '切る', '知る', '要る', '減る', '蹴る', '喋る', '滑る']);
-  const I_ROW = new Set([...'いきしちにひみりぎじぢびぴ']);
-  const E_ROW = new Set([...'えけせてねへめれげぜでべぺ']);
-
-  // Which of the word's two text fields actually carries the okurigana.
-  // headword() prefers kanji unconditionally, which silently breaks entries
-  // written as 食 / たべる — the kanji field alone has no inflectable ending,
-  // so genGodan() returned {} and the word got no forms at all.
-  function inflectionKey(w) {
-    const k = (w.kanji || '').trim(), r = (w.reading || '').trim();
-    if (k && GODAN_ROW[k.slice(-1)]) return k;
-    if (r && GODAN_ROW[r.slice(-1)]) return r;
-    return k || r || '';
-  }
-
-  // → null (not a verb) | {state:'clear', cls} | {state:'ambiguous'} | {state:'unusable'}
-  function verbAudit(w) {
-    if (!w || w.pos !== 'verb') return null;
-    const key = inflectionKey(w);
-    if (!key) return { state: 'unusable' };
-    if (/する$/.test(key) || /来る$/.test(key) || /くる$/.test(key)) return { state: 'clear', cls: 'irregular' };
-    const last = key.slice(-1);
-    if (!GODAN_ROW[last]) return { state: 'unusable' };   // doesn't end in a u-row kana at all
-    if (last !== 'る') return { state: 'clear', cls: 'godan' };
-    if (GODAN_LOOKALIKES.has(key)) return { state: 'clear', cls: 'godan' };
-
-    // The row of the kana before る decides it — but that test has to run on
-    // the READING, not the kanji form. 見る / 出る / 寝る / 着る put a kanji
-    // directly before る, which carries no row information at all; reading
-    // the kanji form here classified 見る as godan and generated 見ります.
-    const r = (w.reading || '').trim();
-    const kana = (r.slice(-1) === 'る') ? r : key;
-    const prev = kana.slice(-2, -1);
-    if (!prev || isKanji(prev)) return { state: 'ambiguous' };   // can't see the row — ask
-    if (I_ROW.has(prev) || E_ROW.has(prev)) return { state: 'ambiguous' };
-    return { state: 'clear', cls: 'godan' };
-  }
-
-  // What each candidate class WOULD produce, without touching the word.
-  // This is what the audit shows the person deciding — the forms themselves,
-  // never the class name, so no Japanese grammar vocabulary is required to
-  // answer correctly.
-  function previewForms(w, cls) {
-    const key = inflectionKey(w);
-    return Object.assign({}, buildForms(w, cls, key), w.irregular_forms || {});
-  }
-
-  // Verbs still awaiting a human decision, plus the ones whose text fields
-  // can't produce forms at all (usually a kanji field with the okurigana
-  // left off). Anything here is excluded from form-based exercises.
+  const drillable = w => drillFormsFor(w).length > 0;
   function verbsNeedingAudit() {
-    return state.words.filter(w => {
-      const a = verbAudit(w);
-      return a && ((a.state === 'ambiguous' && !w.class_confirmed) || a.state === 'unusable');
-    });
+    return state.words.filter(w => { const a = verbAudit(w); return a && (a.state === 'unusable' || !w.class_confirmed); });
   }
-
   function setVerbClass(id, cls) {
     const w = getWord(id);
     if (!w || !['godan', 'ichidan', 'irregular'].includes(cls)) return false;
-    w.verb_class = cls;
-    w.class_confirmed = true;
-    regenerateForms(w);
-    save();
-    return true;
+    const a = verbAudit(w);
+    if (a.state === 'unusable' || (a.state === 'clear' && a.cls !== cls)) return false;
+    w.verb_class = cls; w.class_confirmed = true; regenerateForms(w); save(); return true;
   }
-
-
-  function inferVerbClass(w) {
-    const k = headword(w);
-    if (k === 'する' || k === 'くる' || k === '来る') return 'irregular';
-    return 'godan';   // safe default; ichidan verbs need explicit selection —
-                       // -iru/-eru endings are NOT a reliable ichidan signal
-                       // (帰る, 走る, 要る are godan despite looking ichidan).
-  }
-
-  // ---- cache entry point -------------------------------------
-  function regenerateForms(w) {
-    if (w.pos === 'verb') {
-      // Anything the rules can decide alone is decided here, on every write —
-      // add, edit, hydrate and import all funnel through this function, so a
-      // separate settling pass would just be a fourth place to forget.
-      const a = verbAudit(w);
-      if (a && a.state === 'clear') { w.verb_class = a.cls; w.class_confirmed = true; }
-      else if (!w.verb_class) w.verb_class = inferVerbClass(w);
-      seedKnownVerbException(w);
-      w.forms = Object.assign({}, buildForms(w, w.verb_class, inflectionKey(w)), w.irregular_forms || {});
-    } else if (w.pos === 'i-adj' || w.pos === 'na-adj') {
-      w.forms = Object.assign({}, buildForms(w, null, inflectionKey(w)), w.irregular_forms || {});
-    } else {
-      delete w.forms;
-    }
-  }
-
-  // ---- stem lookup (checker tier-2 use) -----------------------
-  // Given a bare, possibly-incomplete fragment (e.g. "書か" written where
-  // a full conjugated form was needed), find which dictionary entry it
-  // could be a row-stem of. Reuses GODAN_ROW directly rather than a
-  // second copy of the row table, so the checker's idea of "a valid stem"
-  // can never drift from what the cache generator itself used.
-  function stemsOf(w) {
-    const hw = headword(w);
-    if (!hw) return [];
-    if (w.pos === 'verb') {
-      if (w.verb_class === 'ichidan') return [{ stem: hw.slice(0, -1), stemType: 'ichidan' }];
-      if (w.verb_class === 'godan') {
-        const last = hw.slice(-1), before = hw.slice(0, -1);
-        const row = GODAN_ROW[last];
-        if (!row) return [];
-        return [
-          { stem: before + row.i, stemType: 'i-row' },
-          { stem: before + row.a, stemType: 'a-row' },
-          { stem: before + row.e, stemType: 'e-row' }
-        ];
-      }
-      return [];   // irregular (する/来る) — stems too short/ambiguous to search reliably
-    }
-    if (w.pos === 'i-adj') return [{ stem: hw.slice(0, -1), stemType: 'i-adj' }];
-    // na-adj "stem" is the bare headword — only meaningful when checking
-    // whether an i-adjective-style ending (くない/かった) was mistakenly
-    // stripped off a na-adjective by the caller.
-    if (w.pos === 'na-adj') return [{ stem: hw, stemType: 'na-adj' }];
-    return [];
-  }
-
   function findWordByStem(stem) {
-    if (!stem) return null;
     for (const w of state.words) {
-      for (const s of stemsOf(w)) {
-        if (s.stem === stem) return { word: w, stemType: s.stemType };
-      }
+      const s = Conjugation.stems(w).find(s => s.stem === stem);
+      if (s) return { word: w, stemType: s.stemType };
     }
     return null;
   }
@@ -531,11 +262,13 @@ const DB = (() => {
   function updateWord(id, fields) {
     const w = getWord(id);
     if (!w) return false;
+    const old = { ...w };
     const oldHeadword = w.kanji || w.reading;
     ['kanji', 'reading', 'translation', 'pos'].forEach(k => {
       if (k in fields) w[k] = (fields[k] || '').trim();
     });
     if (oldHeadword !== (w.kanji || w.reading)) delete w.sentencePractice;
+    Conjugation.clearForEdit(w, old);
     if ('verb_class' in fields) {
       w.verb_class = fields.verb_class || undefined;
       if (fields.verb_class) w.class_confirmed = true;
@@ -651,8 +384,7 @@ const DB = (() => {
   const todayStr = () => new Date().toISOString().slice(0, 10);
 
   function normKana(s) {
-    return (s || '').trim().replace(/[\u30a1-\u30f6]/g,
-      c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    return Conjugation.kana(s).trim();
   }
 
   // Has this word already banked its one point for today? Read-only view of

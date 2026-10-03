@@ -11,7 +11,7 @@ function load(files) {
     window: {}, Intl, console,
     localStorage: { getItem: () => stored, setItem: (_key, value) => { stored = value; } }
   });
-  for (const file of ['www/js/backup-schema.js', ...files]) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
+  for (const file of ['www/js/backup-schema.js', 'www/js/conjugation.js', ...files]) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
   return { context, get: name => vm.runInContext(name, context) };
 }
 

@@ -10,7 +10,7 @@ function load(files = [], options = {}) {
       setItem: (k, v) => { if (options.failWrite?.()) throw new Error('disk full'); values.set(k, v); }
     }
   });
-  for (const file of ['backup-schema', 'data', ...files]) {
+  for (const file of ['backup-schema', 'conjugation', 'data', ...files]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../www/js', file + '.js'), 'utf8'), context, { filename: file });
   }
   return { context, values, get: name => vm.runInContext(name, context), db: vm.runInContext('DB', context) };

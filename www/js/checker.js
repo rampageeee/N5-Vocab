@@ -92,10 +92,11 @@ const Checker = (() => {
     DB.allWords().forEach(w => {
       const hw = w.kanji || w.reading;
       if (hw) add(hw, { kind: 'word', wordId: w.id, form: 'plain' });
+      if (w.reading) add(DB.normKana(w.reading), { kind: 'word', wordId: w.id, form: 'plain' });
       const trusted = w.pos !== 'verb' || w.class_confirmed;
       if (w.forms && trusted) {
         Object.entries(w.forms).forEach(([form, surface]) => {
-          if (surface) add(surface, { kind: 'word', wordId: w.id, form });
+          DB.acceptedForms(w, form).forEach(s => add(s, { kind: 'word', wordId: w.id, form }));
         });
       }
     });
