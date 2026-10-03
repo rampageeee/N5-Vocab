@@ -458,6 +458,8 @@
 
       <div class="settings-group">
         <h2 data-i18n="settings.backup">Backup</h2>
+        <button class="tool-btn" id="btnRecovery" hidden>Export recovery data</button>
+        <button class="tool-btn" id="btnRetrySave" hidden>Retry save</button>
         <div class="setting-row">
           <span data-i18n="settings.lastBackup">Last backup</span>
           <span class="backup-status" id="setBackupStatus"></span>
@@ -575,6 +577,8 @@
     </div>
   </div>
 
+  <div id="storageStatus" class="storage-status" role="alert" hidden></div>
+  <script src="js/backup-schema.js"></script>
   <script src="js/data.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/router.js"></script>

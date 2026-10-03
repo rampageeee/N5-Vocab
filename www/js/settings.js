@@ -107,6 +107,7 @@ const Settings = (() => {
 
   // ---- render ----------------------------------------------
   function render() {
+    renderStorage();
     renderAudit();
     el('setDark').checked = DB.getTheme() === 'dark';
     el('setLang').value = DB.getLocale();
@@ -148,6 +149,16 @@ const Settings = (() => {
           </div>`;
         }).join('')
       : `<p class="stub">${esc(t('settings.emptyCats'))}</p>`;
+  }
+
+  function renderStorage() {
+    const status = DB.storageStatus(), node = el('storageStatus');
+    if (node) {
+      node.hidden = !status.error;
+      node.textContent = status.error ? t(status.locked ? 'storage.loadFailed' : 'storage.saveFailed', status.error) : '';
+    }
+    if (el('btnRecovery')) { el('btnRecovery').hidden = !status.recoverable; el('btnRecovery').textContent = t('storage.recovery'); }
+    if (el('btnRetrySave')) { el('btnRetrySave').hidden = !status.error || status.locked; el('btnRetrySave').textContent = t('storage.retry'); }
   }
 
   function renderBackup() {
@@ -230,8 +241,9 @@ const Settings = (() => {
     return `n5-backup-${new Date().toISOString().slice(0, 10)}.json`;
   }
 
-  function exportedOK() {
+  async function exportedOK() {
     DB.markExport();
+    await DB.flush();
     renderBackup();
     App.refreshExportStatus();
   }
@@ -255,12 +267,12 @@ const Settings = (() => {
       shareUri = c.uri;
     } catch { /* share is the optional half — a local copy alone is a backup */ }
 
-    if (localUri) exportedOK();
+    if (localUri) await exportedOK();
 
     if (shareUri && Share && typeof Share.share === 'function') {
       try {
         await Share.share({ title: name, files: [shareUri], dialogTitle: t('export.share') });
-        if (!localUri) exportedOK();
+        // A resolved share sheet does not prove that the recipient saved it.
       } catch { /* user dismissed, or no target app — the local copy still stands */ }
     }
 
@@ -275,9 +287,11 @@ const Settings = (() => {
     const a = document.createElement('a');
     a.href = url;
     a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-    exportedOK();
+    document.body.appendChild(a);
+    a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Browser download completion is not observable; do not stamp a saved backup.
+    alert(t('export.downloadStarted'));
   }
 
   async function exportData() {
@@ -300,15 +314,16 @@ const Settings = (() => {
     if (!file) return;
     if (!confirm(t('import.confirm'))) return;
     const r = new FileReader();
-    r.onload = () => {
+    r.onload = async () => {
       try {
-        DB.importJSON(r.result);
+        await DB.importJSON(r.result);
         applyAppearance();
         I18N.applyStatic(document);
         render();
         alert(t('import.done'));
       } catch (err) { alert(t('import.error', err.message)); }
     };
+    r.onerror = () => alert(t('import.error', r.error?.message || 'File could not be read'));
     r.readAsText(file);
   }
 
@@ -337,6 +352,23 @@ const Settings = (() => {
     el('catManage').addEventListener('click', e => {
       const b = e.target.closest('[data-delcat]');
       if (b) deleteCat(b.dataset.delcat);
+    });
+    window.addEventListener('n5-storage', renderStorage);
+    renderStorage();
+    el('btnRetrySave').addEventListener('click', async () => {
+      try { await DB.retrySave(); renderStorage(); } catch (error) { alert(error.message); }
+    });
+    el('btnRecovery').addEventListener('click', async () => {
+      const raw = DB.recoveryData();
+      if (raw == null) return;
+      const P = window.Capacitor?.Plugins || {};
+      try {
+        if (window.Capacitor?.isNativePlatform?.()) {
+          const result = await P.Filesystem.writeFile({ path: 'n5-recovery.json', data: raw, directory: 'DOCUMENTS', encoding: 'utf8' });
+          if (!result.uri) throw new Error('No saved file URI');
+          alert(t('export.savedLocal', 'Documents/n5-recovery.json'));
+        } else exportWeb(raw, 'n5-recovery.json');
+      } catch (error) { alert(t('export.error', error.message)); }
     });
     el('btnExport').addEventListener('click', exportData);
     el('btnImport').addEventListener('click', () => el('fileImport').click());

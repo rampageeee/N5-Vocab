@@ -866,3 +866,7 @@ body {
   background: var(--surface-2);
 }
 .lesson__watch strong { color: var(--kanji); }
+
+.storage-status { position: fixed; bottom: 0; inset-inline: 0; z-index: 100; padding: 12px; background: #842424; color: #fff; font-size: 14px; }
+.storage-status:not([hidden]) { display: block; }
+body:has(.storage-status:not([hidden])) { padding-bottom: 85px; }

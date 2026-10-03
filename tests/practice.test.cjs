@@ -11,7 +11,7 @@ function load(files) {
     window: {}, Intl, console,
     localStorage: { getItem: () => stored, setItem: (_key, value) => { stored = value; } }
   });
-  for (const file of files) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
+  for (const file of ['www/js/backup-schema.js', ...files]) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
   return { context, get: name => vm.runInContext(name, context) };
 }
 
@@ -29,7 +29,7 @@ test('the water strokes parse to finite geometry and can be traced', () => {
   }
 });
 
-test('one dictionary word has one saved sentence and earns gold after three exercises', () => {
+test('one dictionary word has one saved sentence and earns gold after three exercises', async () => {
   const { context, get } = load([
     'www/js/data.js', 'www/js/sentence-practice.js', 'www/data/sentence-bank.js'
   ]);
@@ -52,12 +52,12 @@ test('one dictionary word has one saved sentence and earns gold after three exer
   assert.equal(db.completeSentenceStep(water.id, 2), true);
   assert.equal(db.stars(water).gold, true);
   const backup = db.exportJSON();
-  db.importJSON(backup);
+  await db.importJSON(backup);
   assert.equal(db.stars(db.getWord(water.id)).gold, true);
   assert.deepEqual([...db.sentenceProgress(water.id)], [true, true, true]);
 });
 
-test('a custom sentence works without the sentence bank and old gold stars survive import', () => {
+test('a custom sentence works without the sentence bank and old gold stars survive import', async () => {
   const { get } = load(['www/js/data.js', 'www/js/sentence-practice.js']);
   const db = get('DB'), practice = get('SentencePractice');
   db.addCategory('N5');
@@ -71,6 +71,6 @@ test('a custom sentence works without the sentence bank and old gold stars survi
   assert.deepEqual([...db.sentenceProgress(word.id)], [false, false, false]);
   const old = JSON.parse(db.exportJSON());
   old.words[0].sentencePoints = 5;
-  db.importJSON(JSON.stringify(old));
+  await db.importJSON(JSON.stringify(old));
   assert.equal(db.stars(db.getWord(word.id)).gold, true);
 });

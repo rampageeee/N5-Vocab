@@ -48,63 +48,86 @@ const DB = (() => {
     }
   });
 
-  /* ---- storage seam ----------------------------------------
-     Native (APK): @capacitor/preferences → SharedPreferences, which
-     survives app updates and rides Android auto-backup. Browser (or
-     any context without the Capacitor bridge): localStorage. Same
-     data.js runs in both — the only async surface is the initial
-     read (hydrate); writes are fire-and-forget (Preferences flushes
-     fast and this app isn't write-heavy, so a mutation-then-kill
-     losing the last write is a non-issue; awaiting every save() would
-     ripple async through ~40 call sites for no real gain). */
+  /* Storage writes are ordered on native. Synchronous callers keep the existing
+     API; await flush() at an async boundary to observe native completion. */
   const Store = (() => {
-    const pref = () => (window.Capacitor && window.Capacitor.Plugins
-      && window.Capacitor.Plugins.Preferences) || null;
+    const pref = () => (window.Capacitor?.Plugins?.Preferences) || null;
     async function get(key) {
       const p = pref();
-      if (p) { try { const r = await p.get({ key }); return (r && r.value != null) ? r.value : null; } catch { return null; } }
-      try { return localStorage.getItem(key); } catch { return null; }
+      if (p) { const r = await p.get({ key }); return r?.value ?? null; }
+      return localStorage.getItem(key);
     }
     function set(key, value) {
       const p = pref();
-      if (p) { p.set({ key, value }).catch(() => {}); return; }
-      try { localStorage.setItem(key, value); } catch {}
+      return p ? p.set({ key, value }) : localStorage.setItem(key, value);
     }
-    return { get, set };
+    return { get, set, native: () => !!pref() };
   })();
 
-  // Starts blank so every synchronous getter works before hydrate resolves;
-  // main.js awaits hydrate() before first paint, so real values are in place.
-  let state = blank();
-
-  function merge(p) {
-    return Object.assign(blank(), p, { settings: Object.assign(blank().settings, p.settings || {}) });
-  }
-
-  async function hydrate() {
-    let raw = await Store.get(KEY);
-    // One-time migration: pre-Preferences builds wrote to localStorage. On
-    // native, if Preferences is empty but a legacy localStorage copy survived
-    // the update, adopt it (and persist forward). No-op on web, where Store
-    // already IS localStorage. Falls through to manual .json import if the
-    // WebView cleared localStorage across the update.
-    if (raw == null) {
-      try {
-        const legacy = localStorage.getItem(KEY);
-        if (legacy != null) { raw = legacy; Store.set(KEY, legacy); }
-      } catch { /* localStorage unavailable */ }
+  let state = blank(), recoveryRaw = null, locked = false;
+  let storageError = null, pending = Promise.resolve(), serial = 0;
+  let transaction = false, needsSave = false;
+  function storageStatus() { return { error: storageError?.message || null, locked, recoverable: recoveryRaw != null }; }
+  function report(error) {
+    storageError = error;
+    if (typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('n5-storage', { detail: storageStatus() }));
     }
-    if (raw) {
-      try {
-        state = merge(JSON.parse(raw));
-        reconcileKanji();
-        state.words.forEach(regenerateForms);   // backfill verb_class + forms + auto-settle on upgrade
-      } catch { /* keep blank */ }
+  }
+  function prepare(raw) {
+    const candidate = BackupSchema.decode(raw, blank());
+    reconcileKanji(candidate);
+    candidate.words.forEach(regenerateForms);
+    return candidate;
+  }
+  async function hydrate() {
+    let raw;
+    try {
+      raw = await Store.get(KEY);
+      if (raw == null && Store.native()) {
+        raw = localStorage.getItem(KEY);
+        if (raw != null) await Store.set(KEY, raw);
+      }
+      if (raw != null) state = prepare(raw);
+      report(null);
+    } catch (error) {
+      // Never overwrite unreadable data with a blank database. Settings can
+      // export the original payload or import a repaired backup.
+      recoveryRaw = raw ?? null;
+      locked = true;
+      report(new Error('Could not load saved data. Writes are blocked. ' + error.message));
     }
     return state;
   }
-
-  function save() { Store.set(KEY, JSON.stringify(state)); }
+  function persist() {
+    const payload = exportJSON();
+    if (!Store.native()) {
+      try { Store.set(KEY, payload); report(null); }
+      catch (error) { report(new Error('Data was not saved: ' + error.message)); throw storageError; }
+      return;
+    }
+    const write = ++serial;
+    pending = pending.then(async () => {
+      try { await Store.set(KEY, payload); if (write === serial) report(null); }
+      catch (error) { if (write === serial) report(new Error('Changes are not saved: ' + error.message)); }
+    });
+  }
+  function save() { if (transaction) needsSave = true; else persist(); }
+  async function flush() { await pending; if (storageError) throw new Error(storageError.message); }
+  async function retrySave() { if (locked) throw new Error('Import a repaired backup before saving.'); persist(); await flush(); }
+  function mutate(fn) {
+    return (...args) => {
+      if (locked) throw new Error('Saved data could not be loaded. Export recovery data or import a valid backup.');
+      const before = JSON.stringify(state);
+      transaction = true; needsSave = false;
+      try {
+        const result = fn(...args);
+        transaction = false;
+        if (needsSave) persist();
+        return result;
+      } catch (error) { transaction = false; state = JSON.parse(before); throw error; }
+    };
+  }
 
   /* Characters the kana chart can actually teach. Kept here rather than read
      from KANA_DATA because stars() runs on every dictionary/flashcard render,
@@ -123,11 +146,11 @@ const DB = (() => {
   const isKanji = ch => /[\u4e00-\u9faf\u3400-\u4dbf]/.test(ch);
   function kanjiOf(str) { return [...(str || '')].filter(isKanji); }
 
-  function reconcileKanji() {
+  function reconcileKanji(target = state) {
     const used = new Set();
-    state.words.forEach(w => kanjiOf(w.kanji).forEach(c => used.add(c)));
-    used.forEach(c => { if (!state.kanji[c]) state.kanji[c] = { testPasses: 0 }; });
-    Object.keys(state.kanji).forEach(c => { if (!used.has(c)) delete state.kanji[c]; });
+    target.words.forEach(w => kanjiOf(w.kanji).forEach(c => used.add(c)));
+    used.forEach(c => { if (!target.kanji[c]) target.kanji[c] = { testPasses: 0 }; });
+    // Character progress is independent of vocabulary membership and retained.
   }
 
   const uid = () => 'w_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -457,7 +480,7 @@ const DB = (() => {
   function reorderCategories(order) {
     if (!Array.isArray(order) || order.length !== state.categories.length) return false;
     const set = new Set(state.categories);
-    if (!order.every(n => set.has(n))) return false;
+    if (new Set(order).size !== order.length || !order.every(n => set.has(n))) return false;
     state.categories = order.slice();
     save();
     return true;
@@ -468,8 +491,8 @@ const DB = (() => {
   // relative positions untouched. No schema change; wordsIn() stays honest.
   function reorderWords(cat, ids) {
     const inCat = state.words.filter(w => w.category === cat);
-    if (ids.length !== inCat.length) return false;
-    const byId = {}; inCat.forEach(w => byId[w.id] = w);
+    if (!Array.isArray(ids) || ids.length !== inCat.length || new Set(ids).size !== ids.length) return false;
+    const byId = Object.create(null); inCat.forEach(w => byId[w.id] = w);
     if (!ids.every(id => byId[id])) return false;
     let oi = 0;
     state.words = state.words.map(w => w.category === cat ? byId[ids[oi++]] : w);
@@ -819,18 +842,22 @@ const DB = (() => {
   function markExport() { state.settings.lastExport = new Date().toISOString(); save(); }
 
   // ---- export / import -------------------------------------
-  function exportJSON() { return JSON.stringify(state, null, 2); }
-  function importJSON(raw) {
-    const p = JSON.parse(raw);
-    if (!p.words || !p.categories) throw new Error('Invalid file.');
-    state = merge(p);
-    reconcileKanji();
-    state.words.forEach(regenerateForms);
-    save();
+  function exportJSON() { return JSON.stringify({ ...state, app: 'n5-vocab', schemaVersion: BackupSchema.VERSION }, null, 2); }
+  async function importJSON(raw) {
+    const candidate = prepare(raw); // All validation/regeneration before writes or adoption.
+    await pending;
+    try {
+      if (recoveryRaw != null) await Store.set(KEY + '-recovery', recoveryRaw);
+      await Store.set(KEY, JSON.stringify(candidate));
+    } catch (error) { report(new Error('Import was not saved: ' + error.message)); throw storageError; }
+    state = candidate;
+    locked = false;
+    report(null);
   }
 
-  return {
-    hydrate,
+
+  const api = {
+    hydrate, flush, retrySave, storageStatus, recoveryData: () => recoveryRaw,
     SILVER_TARGET, BRONZE_TARGET, GOLD_TARGET, MISTAKE_RESOLVE_TARGET,
     addCategory, categories, countInCategory, deleteCategory,
     renameCategory, reorderCategories, reorderWords,
@@ -850,6 +877,13 @@ const DB = (() => {
     getLocale, setLocale, getLastPos, setLastPos, lastExport, markExport,
     exportJSON, importJSON
   };
+  const mutations = [addCategory, deleteCategory, renameCategory, reorderCategories, reorderWords,
+    addWord, updateWord, deleteWord, addGrammarEntry, updateGrammarEntry, deleteGrammarEntry,
+    logMistake, scoreMistake, scoreFlash, setSentencePractice, completeSentenceStep,
+    recordKanjiPass, recordKanaPass, setKanjiPriority, setVerbClass,
+    setTheme, setPalette, setTolerance, setLocale, setFlashFilter, setLastPos, markExport];
+  mutations.forEach(fn => { api[fn.name] = mutate(fn); });
+  return api;
 })();
 
 /* `const DB = …` at classic-script top level creates a binding in the global
