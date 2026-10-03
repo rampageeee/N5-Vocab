@@ -37,12 +37,14 @@ const BackupSchema = (() => {
   function sentence(p) {
     if (!object(p)) fail('sentencePractice');
     ['jp', 'target'].forEach(k => str(p[k], 'sentencePractice.' + k));
+    ['source', 'review'].forEach(k => { if (p[k] != null) str(p[k], 'sentencePractice.' + k); });
+    if (p.source && !/^https:\/\//.test(p.source)) fail('sentence source URL');
     ['en', 'pl'].forEach(k => { if (p[k] != null) str(p[k], 'sentencePractice.' + k); });
     texts(p.surfaces, 'surfaces'); texts(p.lemmas, 'lemmas');
     if (p.baseWords != null) texts(p.baseWords, 'baseWords');
     if (p.surfaces.length < 2 || p.surfaces.length !== p.lemmas.length ||
         p.surfaces.some(s => !s) || !p.surfaces.includes(p.target) ||
-        p.surfaces.join('') !== p.jp.replace(/[\s。、！？!?.,「」『』]/g, '')) fail('sentence token alignment');
+        p.surfaces.join('').normalize('NFKC') !== p.jp.normalize('NFKC').replace(/[\s。、！？!?.,「」『』]/g, '')) fail('sentence token alignment');
     if (!Array.isArray(p.steps) || p.steps.length !== 3 || p.steps.some(v => typeof v !== 'boolean') ||
         (p.steps[1] && !p.steps[0]) || (p.steps[2] && !p.steps[1])) fail('sentence progress');
   }

@@ -12,3 +12,5 @@ Branch: `improve/data-language-mobile`. No APK, Gradle, Capacitor sync, or datas
 Native persistence remains asynchronous: synchronous mutation methods update the active view immediately. The banner and `flush()` distinguish that state from confirmed persistence. An app kill before an awaited write finishes remains a native verification case.
 
 Recovery exports contain the original unreadable bytes. Browser download completion cannot be observed; users must check their downloaded file. Android Documents write and sharing need device testing.
+
+Batch 5 implemented: 30 construction-reviewed bilingual starter examples; explicit default vocabulary filter, dictionary variants, unfamiliar-word and review labels, reviewed kana spelling alternatives, example-specific grading and retryable bank loading. Verified by sentence-selection regressions and the read-only dataset audit. Larger bank repair, mass translation and paraphrase review remain pending; see SENTENCE-REVIEW.md.

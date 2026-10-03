@@ -11,7 +11,7 @@ function load(files) {
     window: {}, Intl, console,
     localStorage: { getItem: () => stored, setItem: (_key, value) => { stored = value; } }
   });
-  for (const file of ['www/js/backup-schema.js', 'www/js/conjugation.js', ...files]) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
+  for (const file of ['www/js/backup-schema.js', 'www/js/conjugation.js', 'www/js/sentence-examples.js', ...files]) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
   return { context, get: name => vm.runInContext(name, context) };
 }
 
@@ -36,7 +36,7 @@ test('one dictionary word has one saved sentence and earns gold after three exer
   const db = get('DB'), practice = get('SentencePractice');
   db.addCategory('N5');
   const water = db.addWord({ kanji: '水', reading: 'みず', translation: 'water', pos: 'noun', category: 'N5' });
-  const candidate = practice.candidates(water)[0];
+  const candidate = practice.candidates(water, { onlyKnown: false })[0];
   assert.ok(candidate);
   assert.ok(candidate.x.jp.includes('水'));
   assert.ok(candidate.x.jp.length <= 10, 'the default example should be short enough for N5 practice');

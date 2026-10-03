@@ -5,7 +5,7 @@ const SentencePractice = (() => {
   const t = (key, ...args) => I18N.t(key, ...args);
   const esc = s => String(s || '').replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const clean = s => String(s || '').normalize('NFKC').replace(/[\s。、！？!?.,「」『』]/g, '');
+  const clean = SentenceExamples.clean;
   const head = w => w.kanji || w.reading;
   const PARTICLES = new Set([
     'は', 'が', 'を', 'に', 'へ', 'で', 'と', 'も', 'の', 'や', 'か', 'ね', 'よ', 'から', 'まで',
@@ -15,7 +15,7 @@ const SentencePractice = (() => {
 
   let selected = null, category = '__all__', search = '', step = 0;
   let picked = [], chosen = [];
-  let bankLoading = null;
+  let bankLoading = null, knownOnly = true, bankFailed = false;
 
   function loadBank() {
     if (window.SENTENCE_BANK && window.SENTENCE_INDEX) return Promise.resolve(true);
@@ -23,42 +23,75 @@ const SentencePractice = (() => {
     bankLoading = new Promise(resolve => {
       const script = document.createElement('script');
       script.src = 'data/sentence-bank.js';
-      script.onload = () => resolve(!!(window.SENTENCE_BANK && window.SENTENCE_INDEX));
-      script.onerror = () => resolve(false);
+      const finish = ok => { bankFailed = !ok; if (!ok) script.remove(); resolve(ok); };
+      script.onload = () => finish(!!(window.SENTENCE_BANK && window.SENTENCE_INDEX));
+      script.onerror = () => finish(false);
       document.head.appendChild(script);
-    });
+    }).then(ok => { bankLoading = null; return ok; });
     return bankLoading;
   }
 
-  function candidates(w) {
-    if (!window.SENTENCE_INDEX) return [];
-    const keys = [...new Set([head(w), w.reading].filter(Boolean))];
-    const seen = new Set(), out = [];
-    const forms = new Set([head(w), w.reading]);
-    if (w.pos !== 'verb' || w.class_confirmed) {
-      Object.values(w.forms || {}).forEach(f => { if (f) forms.add(f); });
-    }
-    if (w.pos === 'na-adj') { forms.add(head(w) + 'な'); forms.add(head(w) + 'に'); }
-    if (w.pos === 'i-adj' && head(w).endsWith('い')) forms.add(head(w).slice(0, -1) + 'く');
-    keys.forEach(key => (window.SENTENCE_INDEX[key] || []).forEach(index => {
-      if (seen.has(index)) return;
-      seen.add(index);
-      const x = window.SENTENCE_BANK[index];
-      const at = x.w.findIndex((lemma, i) => keys.includes(lemma) && forms.has(x.s[i]));
-      if (at < 0 || !x.en || x.s.length < 2 || x.s.length > 9 ||
-          x.jp.replace(/[\s。、！？!?.,「」『』]/g, '') !== x.s.join('') ||
-          !x.jp.includes(x.s[at])) return;
-      const score = x.jp.length + x.s.length * 2
-        + (DB.getLocale() === 'pl' && x.pl ? -2 : 0);
-      out.push({ score, x, target: x.s[at] });
+  function candidates(w, options = {}) {
+    if (!w) return [];
+    const onlyKnown = options.onlyKnown ?? knownOnly;
+    const keys = SentenceExamples.keys(w), forms = new Set([head(w), w.reading, ...keys]);
+    Object.keys(w.forms || {}).forEach(k => DB.acceptedForms(w, k).forEach(f => forms.add(f)));
+    if (w.pos === 'na-adj') keys.forEach(k => { forms.add(k + 'な'); forms.add(k + 'に'); });
+    const pool = [...(window.BEGINNER_SENTENCES || [])], seen = new Set();
+    keys.forEach(key => (window.SENTENCE_INDEX?.[key] || []).forEach(index => {
+      if (!seen.has(index)) { seen.add(index); pool.push(window.SENTENCE_BANK[index]); }
     }));
-    return out.sort((a, b) => a.score - b.score || a.x.id - b.x.id);
+    const out = [];
+    pool.forEach(x => {
+      if (!SentenceExamples.aligned(x) || !x.en || x.s.length > 9) return;
+      const at = x.w.findIndex((lemma, i) => SentenceExamples.variants(lemma).some(k => keys.includes(k)) && forms.has(x.s[i]));
+      if (at < 0) return;
+      const unknown = SentenceExamples.unknown(x, [...DB.allWords(), w], PARTICLES);
+      if (onlyKnown && unknown.length) return;
+      const reviewed = x.review === 'construction-reviewed';
+      const score = unknown.length * 100 + (reviewed ? 0 : 30) + x.jp.length + x.s.length * 2
+        + (DB.getLocale() === 'pl' && x.pl ? -2 : 0);
+      out.push({ score, x, target: x.s[at], unknown, reviewed });
+    });
+    return out.sort((a, b) => a.score - b.score || String(a.x.id).localeCompare(String(b.x.id)));
   }
 
   function exampleFrom(candidate) {
     const { x, target } = candidate;
     return { id: x.id, jp: x.jp, en: x.en, pl: x.pl,
-      surfaces: x.s, lemmas: x.w, target };
+      surfaces: x.s, lemmas: x.w, target, source: x.source || '', review: x.review || '' };
+  }
+
+  function acceptedAnswers(p, w, exercise) {
+    if (exercise === 1 || (exercise === 2 && p.review !== 'construction-reviewed')) return [p.jp];
+    if (exercise === 2) {
+      // Reviewed spelling alternative, preserving the same token order and grammar.
+      const kana = p.surfaces.map((surface, i) => {
+        const entry = DB.allWords().find(x => SentenceExamples.keys(x).includes(p.lemmas[i]));
+        if (!entry) return surface;
+        if (SentenceExamples.keys(entry).includes(surface)) return entry.reading || surface;
+        for (const key of Object.keys(entry.forms || {})) {
+          const spellings = DB.acceptedForms(entry, key);
+          if (spellings.includes(surface)) return spellings.find(v => /^[\u3040-\u309fー]+$/.test(v)) || surface;
+        }
+        return surface;
+      }).join('');
+      return [p.jp, kana];
+    }
+    const accepted = [p.target];
+    if (SentenceExamples.keys(w).includes(p.target)) accepted.push(w.reading, head(w));
+    Object.keys(w.forms || {}).forEach(k => {
+      const variants = DB.acceptedForms(w, k);
+      if (variants.includes(p.target)) accepted.push(...variants);
+    });
+    return accepted.filter(Boolean);
+  }
+
+  function exampleNotes(p) {
+    const unknown = SentenceExamples.unknown({ w: p.lemmas }, DB.allWords(), PARTICLES);
+    return `<p class="sp-credit">${esc(t(p.review === 'construction-reviewed' ? 'sentence.reviewed' : 'sentence.unreviewed'))}</p>`
+      + (DB.getLocale() === 'pl' && !p.pl ? `<p class="sp-credit">${esc(t('sentence.englishFallback'))}</p>` : '')
+      + (unknown.length ? `<p class="sp-credit">${esc(t('sentence.unfamiliar'))}: <span class="jp">${esc(unknown.join(' · '))}</span></p>` : '');
   }
 
   function renderWords() {
@@ -99,7 +132,7 @@ const SentencePractice = (() => {
     el('spWork').hidden = false;
     el('spWork').innerHTML = `<p class="stub">${esc(t('sentence.loading'))}</p>`;
     if (!DB.sentencePractice(id)) {
-      await loadBank();
+      if (!candidates(w).length) await loadBank();
       if (selected !== id || !DB.getWord(id)) return;
       const best = candidates(w)[0];
       if (best) DB.setSentencePractice(id, exampleFrom(best));
@@ -126,7 +159,7 @@ const SentencePractice = (() => {
     area.hidden = false;
     if (!p) {
       area.innerHTML = `<h2 class="sp-title">${esc(head(w))} · ${esc(w.translation)}</h2>
-        <p>${esc(t('sentence.noExample'))}</p>
+        <p>${esc(t('sentence.noExample'))}</p>${bankFailed ? `<p role="alert">${esc(t('sentence.bankFailed'))}</p><button class="tool-btn" data-sp-retry>${esc(t('sentence.retryBank'))}</button>` : ''}
         <button class="tool-btn" data-sp-edit>${esc(t('sentence.addExample'))}</button>
         <div id="spEditor"></div>`;
       return;
@@ -138,8 +171,10 @@ const SentencePractice = (() => {
       <button class="tool-btn tool-btn--ghost" data-sp-change>${esc(t('sentence.change'))}</button></div>
       <div class="sp-steps">${tabs}</div>
       <div class="sp-translation">${esc(translation(p))}</div>
+      ${exampleNotes(p)}
       <div id="spQuestion"></div><div id="spFeedback" class="fc-feedback" aria-live="polite"></div>
-      ${p.id ? `<p class="sp-credit">${esc(t('sentence.source'))} <a href="https://tatoeba.org/en/sentences/show/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Tatoeba #${esc(p.id)}</a> · CC BY 2.0 FR</p>` : ''}
+      ${typeof p.id === 'number' ? `<p class="sp-credit">${esc(t('sentence.source'))} <a href="https://tatoeba.org/en/sentences/show/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Tatoeba #${esc(p.id)}</a> · CC BY 2.0 FR</p>` : ''}
+      ${p.review === 'construction-reviewed' && /^https:\/\//.test(p.source || '') ? `<p class="sp-credit"><a href="${esc(p.source)}" target="_blank" rel="noopener">${esc(t('sentence.constructionSource'))}</a></p>` : ''}
       <div id="spAlternatives" hidden></div>`;
     drawQuestion(p, w);
   }
@@ -191,18 +226,11 @@ const SentencePractice = (() => {
     if (!p || !w) return;
     const answer = step === 1 ? chosen.map(i => p.surfaces[i]).join('') : el('spInput').value;
     const expected = step === 0 ? p.target : p.jp;
-    const accepted = [expected];
-    if (step === 0) {
-      if (expected === head(w)) accepted.push(w.reading);
-      Object.keys(w.forms || {}).forEach(key => {
-        if (w.forms[key] === expected) accepted.push(...DB.acceptedForms(w, key));
-      });
-    }
-    const correct = clean(answer) !== '' && accepted.some(a => clean(answer) === clean(a));
+    const correct = SentenceExamples.matches(answer, expected, acceptedAnswers(p, w, step));
     const fb = el('spFeedback');
     if (!correct) {
       fb.className = 'fc-feedback fc-feedback--bad';
-      fb.innerHTML = `${esc(t('sentence.tryAgain'))} <span class="jp">${esc(expected)}</span>`;
+      fb.innerHTML = `${esc(t(step === 0 ? 'sentence.tryAgain' : 'sentence.differentExample'))} <span class="jp">${esc(expected)}</span>`;
       return;
     }
     const hadGold = DB.stars(w).gold, hadCat = DB.categoryStar(w.category);
@@ -231,8 +259,9 @@ const SentencePractice = (() => {
     const options = candidates(w).slice(0, 8);
     wrap.hidden = false;
     wrap.innerHTML = `<p>${esc(t('sentence.chooseExample'))}</p>`
+      + (bankFailed ? `<p role="alert">${esc(t('sentence.bankFailed'))}</p><button class="tool-btn" data-sp-retry>${esc(t('sentence.retryBank'))}</button>` : '')
       + options.map((c, i) => `<button class="sp-example" data-sp-example="${i}">
-          <span class="jp">${esc(c.x.jp)}</span><span>${esc(DB.getLocale() === 'pl' && c.x.pl ? c.x.pl : c.x.en)}</span>
+          <span class="jp">${esc(c.x.jp)}</span><span>${esc(DB.getLocale() === 'pl' && c.x.pl ? c.x.pl : c.x.en)}</span>${exampleNotes(exampleFrom(c))}
         </button>`).join('')
       + `<button class="tool-btn tool-btn--ghost" data-sp-edit>${esc(t('sentence.custom'))}</button>`;
   }
@@ -286,6 +315,7 @@ const SentencePractice = (() => {
   }
 
   function bind() {
+    el('spKnownOnly').addEventListener('change', e => { knownOnly = e.target.checked; if (selected) showAlternatives(); });
     el('spCategory').addEventListener('change', e => { category = e.target.value; renderWords(); });
     el('spSearch').addEventListener('input', e => { search = e.target.value; renderWords(); });
     el('spWords').addEventListener('click', e => {
@@ -296,7 +326,9 @@ const SentencePractice = (() => {
       const b = e.target.closest('button');
       if (!b) return;
       const p = DB.sentencePractice(selected);
-      if (b.hasAttribute('data-sp-step')) {
+      if (b.hasAttribute('data-sp-retry')) {
+        if (DB.sentencePractice(selected)) showAlternatives(); else selectWord(selected);
+      } else if (b.hasAttribute('data-sp-step')) {
         step = +b.dataset.spStep; resetAttempt(); showSelected();
       } else if (b.hasAttribute('data-sp-next')) {
         step = Math.min(2, step + 1); resetAttempt(); showSelected();
@@ -333,5 +365,5 @@ const SentencePractice = (() => {
     });
   }
 
-  return { render, bind, candidates };
+  return { render, bind, candidates, acceptedAnswers, loadBank };
 })();

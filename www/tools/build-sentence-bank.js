@@ -32,7 +32,10 @@
    N5 ends. The REAL difficulty filter happens at runtime: the app
    keeps only sentences whose lemmas are all in her own dictionary,
    so the bank shipped here is a superset that gets narrower as her
-   vocabulary decides it. That is deliberate — it means the bank
+   vocabulary decides it. The runtime now exposes this as the default
+   "Only words in my dictionary" filter (particles/copulas allowed).
+   Learners can explicitly disable it; unfamiliar lemmas are then shown.
+   That means the bank
    never has to be rebuilt when she adds a word.
 
    INPUTS (download + decompress from https://tatoeba.org/downloads)

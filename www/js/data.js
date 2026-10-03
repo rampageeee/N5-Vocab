@@ -411,10 +411,11 @@ const DB = (() => {
     if (!w || !example || !example.jp || !(example.en || example.pl) ||
         !Array.isArray(example.surfaces) || example.surfaces.length < 2 ||
         !Array.isArray(example.lemmas) || example.lemmas.length !== example.surfaces.length ||
-        example.surfaces.join('') !== example.jp.replace(/[\s。、！？!?.,「」『』]/g, '') ||
+        example.surfaces.join('').normalize('NFKC') !== example.jp.normalize('NFKC').replace(/[\s。、！？!?.,「」『』]/g, '') ||
         !example.surfaces.some(s => s === example.target)) return false;
     w.sentencePractice = {
       id: example.id || null, jp: example.jp, en: example.en, pl: example.pl || '',
+      source: example.source || '', review: example.review || '',
       surfaces: [...example.surfaces], lemmas: [...example.lemmas],
       baseWords: Array.isArray(example.baseWords) ? [...example.baseWords] : null,
       target: example.target, steps: [false, false, false]

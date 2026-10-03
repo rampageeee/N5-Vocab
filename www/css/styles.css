@@ -873,3 +873,6 @@ body:has(.storage-status:not([hidden])) { padding-bottom: 85px; }
 
 .lesson-sources { margin-block: 12px; font-size: 13px; color: var(--text-dim); }
 .lesson-sources a { color: var(--text); text-decoration: underline; }
+
+.sp-filter { display: flex; align-items: center; gap: .5rem; margin: .6rem 0; }
+.sp-filter input { width: auto; }
