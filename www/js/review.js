@@ -115,7 +115,8 @@ const Review = (() => {
     // (only the `answered` flag blocks re-scoring), and block the button
     // from stealing focus so the keyboard doesn't close/reopen per card.
     el('revAction').addEventListener('pointerdown', e => e.preventDefault());
-    el('revInput').addEventListener('keydown', e => { if (e.key === 'Enter') action(); });
+    el('revInput').addEventListener('keydown', e => {
+      if (InputSafety.composing(e)) return; if (e.key === 'Enter') action(); });
     el('revAgain').addEventListener('click', startSession);
   }
 

@@ -359,6 +359,7 @@ const SentencePractice = (() => {
       e.preventDefault(); saveCustom(e.target);
     });
     el('spWork').addEventListener('keydown', e => {
+      if (InputSafety.composing(e)) return;
       if (e.key === 'Enter' && e.target.id === 'spInput' && e.target.tagName === 'INPUT') {
         e.preventDefault(); check();
       }

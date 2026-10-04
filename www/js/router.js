@@ -13,6 +13,7 @@ const Router = (() => {
   function register(name, onEnter) { hooks[name] = onEnter; }
 
   function show(name) {
+    if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('n5-navigation'));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('view--active'));
     let el = document.getElementById('view-' + name);
     if (!el) { name = 'hub'; el = document.getElementById('view-hub'); if (!el) return null; }
@@ -20,6 +21,8 @@ const Router = (() => {
     if (window.scrollTo) window.scrollTo(0, 0);
     current = name;
     if (hooks[name]) hooks[name]();
+    const heading = el.querySelector('h1');
+    if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
     return name;
   }
 

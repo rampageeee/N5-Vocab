@@ -74,17 +74,8 @@ const Kana = (() => {
   let script = 'hira'; // 'hira' | 'kata'
 
   // ---- lazy data load (mirrors kanji.js exactly) -----------
-  let dataLoaded = false, dataLoading = false;
   function ensureData(cb) {
-    if (dataLoaded) return cb(true);
-    if (window.KANA_DATA) { dataLoaded = true; return cb(true); }
-    if (dataLoading) return;
-    dataLoading = true;
-    const s = document.createElement('script');
-    s.src = 'data/kana-data.js';
-    s.onload = () => { dataLoaded = true; dataLoading = false; cb(true); };
-    s.onerror = () => { dataLoading = false; cb(false); };
-    document.head.appendChild(s);
+    DatasetLoader.load('data/kana-data.js', () => window.KANA_DATA).then(cb);
   }
   const hasData = ch => !!(window.KANA_DATA && window.KANA_DATA[ch]);
   const strokesFor = ch => {
@@ -118,23 +109,23 @@ const Kana = (() => {
     el('knHira').classList.toggle('seg--on', script === 'hira');
     el('knKata').classList.toggle('seg--on', script === 'kata');
     ensureData(ok => {
-      const note = ok ? '' : `<p class="stub">${esc(t('kana.loadFail'))}</p>`;
+      const note = ok ? '' : `<p class="stub">${esc(t('kana.loadFail'))}</p><button class="tool-btn" data-retry-dataset>${esc(t('sentence.retryBank'))}</button>`;
       el('knGridGojuon').innerHTML  = note || GOJUON.map(tile).join('');
       el('knGridDakuten').innerHTML = note || DAKUTEN.map(tile).join('');
       el('knGridYoon').innerHTML    = note || YOON.map(tile).join('');
     });
   }
 
-  // ---- canvas session (practice-only; no test mode) --------
+  // ---- canvas session (practice and blind test) --------
   let SIZE = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
   let seq = [], seqPos = 0;      // seq: array of single chars to trace in order
   let curCh = null, ref = null, refRaw = null;
-  let strokes = [], cur = null;
+  let strokes = [], cur = null, pointer = null;
   let mode = 'practice';        // 'practice' | 'test' — mirrors kanji.js
   let testDone = false;         // a scored attempt is on screen
   let gg, rg, ig, box;
 
-  const toGlyph  = p => ({ x: p.x * (VBOX / SIZE), y: p.y * (VBOX / SIZE) });
+  const toGlyph = p => p;
   const toCanvas = p => ({ x: p.x * (SIZE / VBOX), y: p.y * (SIZE / VBOX) });
 
   function openSeq(str) {
@@ -157,16 +148,16 @@ const Kana = (() => {
     curCh = seq[seqPos];
     ref = strokesFor(curCh);
     refRaw = rawFor(curCh);
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('knPrompt').textContent = seq.length > 1 ? `${seq.join('')} (${seqPos + 1}/${seq.length})` : seq[0];
     el('knResult').textContent = '';
     el('knResult').className = 'kd-result';
     el('knRetry').hidden = true;
-    testDone = false;
     drawRef(); redrawInk(); updateHint();
   }
 
   function backToGrid() {
+    cur = null; pointer = null;
     el('kanaDraw').hidden = true;
     el('kanaGridView').hidden = false;
     render();
@@ -174,7 +165,10 @@ const Kana = (() => {
 
   function fit() {
     box = el('knCanvasBox');
+    if (!box.clientWidth) return;
+    cur = null; pointer = null; // an interrupted stroke is discarded, completed ink survives
     SIZE = box.clientWidth;
+    DPR = Math.max(1, window.devicePixelRatio || 1);
     ['knGuide', 'knRef', 'knInk'].forEach(id => {
       const c = el(id); c.width = SIZE * DPR; c.height = SIZE * DPR;
       c.getContext('2d').setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -221,14 +215,14 @@ const Kana = (() => {
     ig.lineWidth = 5; ig.lineCap = 'round'; ig.lineJoin = 'round';
     (cur ? strokes.concat([cur]) : strokes).forEach(st => {
       ig.beginPath();
-      st.forEach((p, k) => { k ? ig.lineTo(p.x, p.y) : ig.moveTo(p.x, p.y); });
+      st.forEach((p, k) => { const c = toCanvas(p); k ? ig.lineTo(c.x, c.y) : ig.moveTo(c.x, c.y); });
       ig.stroke();
     });
     drawMarkers();
   }
 
   // Start dot + direction arrow for the next stroke, on the topmost layer.
-  // Kana tracing is practice-only, so there's no test-mode guard to make.
+  // Blind tests never display stroke markers.
   function drawMarkers() {
     if (mode !== 'practice') return;   // a start dot would give the glyph away
     if (!refRaw || !refRaw.length || strokes.length >= refRaw.length) return;
@@ -238,23 +232,30 @@ const Kana = (() => {
 
   function pos(e) {
     const r = box.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: (e.clientX - r.left) * VBOX / r.width, y: (e.clientY - r.top) * VBOX / r.height };
   }
 
   function onDown(e) {
-    if (!ref || testDone) return;
-    if (mode === 'practice' && strokes.length >= ref.length) return;
-    if (mode === 'test' && strokes.length >= ref.length + 3) return;
-    el('knInk').setPointerCapture(e.pointerId);
+    if (!ref || !SIZE || testDone || pointer !== null || e.isPrimary === false || (e.button != null && e.button !== 0)) return;
+    if (strokes.length >= ref.length) return;
+    pointer = e.pointerId;
+    el('knInk').setPointerCapture(pointer);
     cur = [pos(e)]; redrawInk();
   }
-  function onMove(e) { if (cur) { cur.push(pos(e)); redrawInk(); } }
+  function onMove(e) {
+    if (cur && e.pointerId === pointer) { cur.push(pos(e)); redrawInk(); }
+  }
   function onUp(e) {
-    if (!cur) return;
-    const end = pos(e);
-    if (Math.hypot(end.x - cur[cur.length - 1].x, end.y - cur[cur.length - 1].y) > 0.5) cur.push(end);
-    if (cur.length >= 2) commitStroke(cur);
-    cur = null; redrawInk();
+    if (!cur || e.pointerId !== pointer) return;
+    const raw = cur, end = pos(e);
+    if (Math.hypot(end.x - raw[raw.length - 1].x, end.y - raw[raw.length - 1].y) > 0.5) raw.push(end);
+    cur = null; pointer = null;
+    if (raw.length >= 2) commitStroke(raw);
+    redrawInk();
+  }
+  function onCancel(e) {
+    if (e.pointerId !== pointer) return;
+    cur = null; pointer = null; redrawInk();
   }
 
   // Practice-only: same lenient practice tolerance kanji.js uses, keyed
@@ -262,6 +263,7 @@ const Kana = (() => {
   function practiceTol(tl) { return { pos: tl.pos * 1.5, shape: tl.shape * 1.5, dir: Math.max(0, tl.dir - 0.2), ramp: tl.ramp }; }
 
   function commitStroke(raw) {
+    if (!ref || testDone || strokes.length >= ref.length) return;
     if (mode === 'test') {
       strokes.push(raw);
       updateHint();
@@ -285,6 +287,8 @@ const Kana = (() => {
      same overshoot penalty kanji.js uses, so a kana pass and a kanji pass
      represent the same standard of work. */
   function scoreTest() {
+    if (testDone || !ref || strokes.length !== ref.length) return;
+    testDone = true; // lock before any persistence or UI side effects
     const tl = TOL[DB.getTolerance()];
     let sum = 0;
     for (let i = 0; i < ref.length; i++) sum += SE.grade(SE.scoreStroke(strokes[i].map(toGlyph), ref[i]), tl);
@@ -292,7 +296,6 @@ const Kana = (() => {
     const overshoot = Math.max(0, strokes.length - ref.length) / ref.length;
     const final = Math.max(0, Math.round((coverage - overshoot) * 100));
     const r = el('knResult');
-    testDone = true;
 
     if (final >= 80) {
       const before = DB.kanaProgress(curCh);
@@ -337,11 +340,10 @@ const Kana = (() => {
   }
 
   function clear() {
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('knResult').textContent = '';
     el('knResult').className = 'kd-result';
     el('knRetry').hidden = true;
-    testDone = false;
     drawRef(); redrawInk(); updateHint();
   }
 
@@ -351,6 +353,7 @@ const Kana = (() => {
     el('knKata').addEventListener('click', () => { script = 'kata'; render(); });
     [el('knGridGojuon'), el('knGridDakuten'), el('knGridYoon')].forEach(g => {
       g.addEventListener('click', e => {
+        if (e.target.closest('[data-retry-dataset]')) return render();
         const b = e.target.closest('[data-seq]');
         if (b) openSeq(b.dataset.seq);
       });
@@ -364,7 +367,10 @@ const Kana = (() => {
     ink.addEventListener('pointerdown', onDown);
     ink.addEventListener('pointermove', onMove);
     ink.addEventListener('pointerup', onUp);
-    ink.addEventListener('pointercancel', () => { cur = null; redrawInk(); });
+    ink.addEventListener('pointercancel', onCancel);
+    ink.addEventListener('lostpointercapture', onCancel);
+    window.addEventListener('n5-navigation', () => { cur = null; pointer = null; });
+    window.addEventListener('blur', () => { cur = null; pointer = null; redrawInk(); });
     window.addEventListener('resize', () => { if (!el('kanaDraw').hidden) fit(); });
   }
 

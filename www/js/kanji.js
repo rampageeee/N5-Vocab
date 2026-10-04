@@ -20,17 +20,8 @@ const Kanji = (() => {
   const VBOX = SE.VBOX, N = SE.N, TOL = SE.TOL;
 
   /* ---------- lazy data load ---------- */
-  let dataLoaded = false, dataLoading = false;
   function ensureData(cb) {
-    if (dataLoaded) return cb(true);
-    if (window.KANJI_DATA) { dataLoaded = true; return cb(true); }
-    if (dataLoading) return;
-    dataLoading = true;
-    const s = document.createElement('script');
-    s.src = 'data/kanji-data.js';
-    s.onload = () => { dataLoaded = true; dataLoading = false; cb(true); };
-    s.onerror = () => { dataLoading = false; cb(false); };
-    document.head.appendChild(s);
+    DatasetLoader.load('data/kanji-data.js', () => window.KANJI_DATA).then(cb);
   }
   const strokesFor = ch => {
     const raw = window.KANJI_DATA && window.KANJI_DATA[ch];
@@ -103,7 +94,7 @@ const Kanji = (() => {
     const wrap = el('kanjiGrid');
     wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loading'))}</p>`;
     ensureData(ok => {
-      if (!ok) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loadFail'))}</p>`; return; }
+      if (!ok) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.loadFail'))}</p><button class="tool-btn" data-retry-dataset>${esc(t('sentence.retryBank'))}</button>`; return; }
       const chars = DB.uniqueKanji();
       if (chars.length === 0) { wrap.innerHTML = `<p class="stub">${esc(t('kanji.grid.empty'))}</p>`; return; }
       wrap.innerHTML =
@@ -130,11 +121,11 @@ const Kanji = (() => {
   /* ---------- canvas session ---------- */
   let SIZE = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
   let curCh = null, ref = null, refRaw = null;
-  let mode = 'practice';
-  let strokes = [], cur = null;
+  let mode = 'practice', testDone = false;
+  let strokes = [], cur = null, pointer = null;
   let gg, rg, ig, box;
 
-  const toGlyph  = p => ({ x: p.x * (VBOX / SIZE), y: p.y * (VBOX / SIZE) });
+  const toGlyph = p => p;
   const toCanvas = p => ({ x: p.x * (SIZE / VBOX), y: p.y * (SIZE / VBOX) });
 
   // For the blind Test cue: a single reading from any word using this
@@ -151,7 +142,7 @@ const Kanji = (() => {
     ref = strokesFor(ch);
     refRaw = rawFor(ch);
     if (!ref) return;
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('kanjiGridView').hidden = true;
     el('kanjiDraw').hidden = false;
     setMode('practice');
@@ -160,6 +151,7 @@ const Kanji = (() => {
   }
 
   function backToGrid() {
+    cur = null; pointer = null;
     el('kanjiDraw').hidden = true;
     el('kanjiGridView').hidden = false;
     render();
@@ -167,7 +159,7 @@ const Kanji = (() => {
 
   function setMode(m) {
     mode = m;
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('kdPractice').classList.toggle('seg--on', m === 'practice');
     el('kdTest').classList.toggle('seg--on', m === 'test');
     el('kdCheat').hidden = (m !== 'practice');
@@ -185,7 +177,10 @@ const Kanji = (() => {
 
   function fit() {
     box = el('kdCanvasBox');
+    if (!box.clientWidth) return;
+    cur = null; pointer = null; // an interrupted stroke is discarded, completed ink survives
     SIZE = box.clientWidth;
+    DPR = Math.max(1, window.devicePixelRatio || 1);
     ['kdGuide', 'kdRef', 'kdInk'].forEach(id => {
       const c = el(id); c.width = SIZE * DPR; c.height = SIZE * DPR;
       c.getContext('2d').setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -234,7 +229,7 @@ const Kanji = (() => {
     ig.lineWidth = 5; ig.lineCap = 'round'; ig.lineJoin = 'round';
     (cur ? strokes.concat([cur]) : strokes).forEach(st => {
       ig.beginPath();
-      st.forEach((p, k) => { k ? ig.lineTo(p.x, p.y) : ig.moveTo(p.x, p.y); });
+      st.forEach((p, k) => { const c = toCanvas(p); k ? ig.lineTo(c.x, c.y) : ig.moveTo(c.x, c.y); });
       ig.stroke();
     });
     drawMarkers();
@@ -252,25 +247,34 @@ const Kanji = (() => {
 
   function pos(e) {
     const r = box.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: (e.clientX - r.left) * VBOX / r.width, y: (e.clientY - r.top) * VBOX / r.height };
   }
 
   function onDown(e) {
-    if (mode === 'practice' && strokes.length >= ref.length) return;
-    if (mode === 'test' && strokes.length >= ref.length + 3) return;
-    el('kdInk').setPointerCapture(e.pointerId);
+    if (!ref || !SIZE || testDone || pointer !== null || e.isPrimary === false || (e.button != null && e.button !== 0)) return;
+    if (strokes.length >= ref.length) return;
+    pointer = e.pointerId;
+    el('kdInk').setPointerCapture(pointer);
     cur = [pos(e)]; redrawInk();
   }
-  function onMove(e) { if (cur) { cur.push(pos(e)); redrawInk(); } }
+  function onMove(e) {
+    if (cur && e.pointerId === pointer) { cur.push(pos(e)); redrawInk(); }
+  }
   function onUp(e) {
-    if (!cur) return;
-    const end = pos(e);
-    if (Math.hypot(end.x - cur[cur.length - 1].x, end.y - cur[cur.length - 1].y) > 0.5) cur.push(end);
-    if (cur.length >= 2) commitStroke(cur);
-    cur = null; redrawInk();
+    if (!cur || e.pointerId !== pointer) return;
+    const raw = cur, end = pos(e);
+    if (Math.hypot(end.x - raw[raw.length - 1].x, end.y - raw[raw.length - 1].y) > 0.5) raw.push(end);
+    cur = null; pointer = null;
+    if (raw.length >= 2) commitStroke(raw);
+    redrawInk();
+  }
+  function onCancel(e) {
+    if (e.pointerId !== pointer) return;
+    cur = null; pointer = null; redrawInk();
   }
 
   function commitStroke(raw) {
+    if (!ref || testDone || strokes.length >= ref.length) return;
     if (mode === 'practice') {
       const idx = strokes.length;
       const tl = TOL[DB.getTolerance()];
@@ -310,6 +314,8 @@ const Kanji = (() => {
 
   /* ---------- Test scoring ---------- */
   function scoreTest() {
+    if (testDone || !ref || strokes.length !== ref.length) return;
+    testDone = true; // lock before any persistence or UI side effects
     const tl = TOL[DB.getTolerance()];
     let sum = 0;
     for (let i = 0; i < ref.length; i++) sum += SE.grade(SE.scoreStroke(strokes[i].map(toGlyph), ref[i]), tl);
@@ -333,7 +339,7 @@ const Kanji = (() => {
   }
 
   function retry() {
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('kdRetry').hidden = true;
     el('kdResult').textContent = '';
     el('kdResult').className = 'kd-result';
@@ -341,7 +347,7 @@ const Kanji = (() => {
   }
 
   function clear() {
-    strokes = []; cur = null;
+    strokes = []; cur = null; pointer = null; testDone = false;
     el('kdResult').textContent = '';
     el('kdResult').className = 'kd-result';
     el('kdRetry').hidden = true;
@@ -369,6 +375,7 @@ const Kanji = (() => {
   /* ---------- bind ---------- */
   function bind() {
     el('kanjiGrid').addEventListener('click', e => {
+      if (e.target.closest('[data-retry-dataset]')) return render();
       const b = e.target.closest('[data-ch]');
       if (b) openChar(b.dataset.ch);
     });
@@ -388,7 +395,10 @@ const Kanji = (() => {
     ink.addEventListener('pointerdown', onDown);
     ink.addEventListener('pointermove', onMove);
     ink.addEventListener('pointerup', onUp);
-    ink.addEventListener('pointercancel', () => { cur = null; redrawInk(); });
+    ink.addEventListener('pointercancel', onCancel);
+    ink.addEventListener('lostpointercapture', onCancel);
+    window.addEventListener('n5-navigation', () => { cur = null; pointer = null; });
+    window.addEventListener('blur', () => { cur = null; pointer = null; redrawInk(); });
     window.addEventListener('resize', () => { if (!el('kanjiDraw').hidden) fit(); });
   }
 

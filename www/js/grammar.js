@@ -168,7 +168,7 @@ const Grammar = (() => {
     $('gId').value = ''; $('gName').value = ''; $('gStructure').value = '';
     $('gExample').value = ''; $('gNote').value = '';
     $('btnDeleteGrammar').hidden = true;
-    $('modalGrammar').hidden = false;
+    ModalFocus.open($('modalGrammar'));
     $('gName').focus();
   }
 
@@ -182,10 +182,10 @@ const Grammar = (() => {
     $('gExample').value = g.example;
     $('gNote').value = g.note;
     $('btnDeleteGrammar').hidden = false;
-    $('modalGrammar').hidden = false;
+    ModalFocus.open($('modalGrammar'));
   }
 
-  function closeModal() { $('modalGrammar').hidden = true; }
+  function closeModal() { ModalFocus.close($('modalGrammar')); }
 
   function submit(e) {
     e.preventDefault();

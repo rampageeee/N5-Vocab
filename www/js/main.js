@@ -31,7 +31,7 @@ const App = (() => {
   function closeTopModal() {
     const open = [...document.querySelectorAll('.modal')].filter(m => !m.hidden);
     if (!open.length) return false;
-    open[open.length - 1].hidden = true;
+    ModalFocus.close(open[open.length - 1]);
     return true;
   }
 
@@ -66,6 +66,8 @@ const App = (() => {
       document.getElementById('btnHome').addEventListener('click', function () { Router.go('hub'); });
       document.getElementById('btnSettings').addEventListener('click', function () { Router.go('settings'); });
 
+      InputSafety.bind();
+      ModalFocus.bind();
       Vocab.bind();
       Flash.bind();
       Kanji.bind();

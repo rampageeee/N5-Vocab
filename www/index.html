@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f7f5f2">
   <title>N5</title>
   <script>
@@ -201,9 +201,9 @@
         <div class="kd-stage">
           <div class="kd-left">
             <div class="kd-canvas-box" id="kdCanvasBox">
-              <canvas id="kdGuide"></canvas>
-              <canvas id="kdRef"></canvas>
-              <canvas id="kdInk"></canvas>
+              <canvas id="kdGuide" aria-hidden="true"></canvas>
+              <canvas id="kdRef" aria-hidden="true"></canvas>
+              <canvas id="kdInk" role="img" data-i18n-aria="kanji.canvas" aria-label="Handwriting canvas; touch or pointer required"></canvas>
             </div>
             <div class="kd-hint" id="kdHint"></div>
             <div class="kd-result" id="kdResult"></div>
@@ -260,8 +260,8 @@
       <div class="view__head"><h1 class="view__title" data-i18n="hub.sentences">Sentences</h1></div>
 
       <div class="sp-picker">
-        <select id="spCategory" aria-label="Category"></select>
-        <input id="spSearch" type="search" data-i18n-ph="sentence.search" placeholder="Find a word…" autocomplete="off">
+        <select id="spCategory" data-i18n-aria="word.category" aria-label="Category"></select>
+        <input id="spSearch" type="search" data-i18n-aria="sentence.search" aria-label="Find a word" data-i18n-ph="sentence.search" placeholder="Find a word…" autocomplete="off">
       </div>
       <label class="sp-filter"><input id="spKnownOnly" type="checkbox" checked> <span data-i18n="sentence.knownOnly">Only words in my dictionary</span></label>
       <div id="spWords" class="sp-words"></div>
@@ -352,9 +352,9 @@
         </div>
         <div class="kd-left" style="margin:0 auto;">
           <div class="kd-canvas-box" id="knCanvasBox">
-            <canvas id="knGuide"></canvas>
-            <canvas id="knRef"></canvas>
-            <canvas id="knInk"></canvas>
+            <canvas id="knGuide" aria-hidden="true"></canvas>
+            <canvas id="knRef" aria-hidden="true"></canvas>
+            <canvas id="knInk" role="img" data-i18n-aria="kanji.canvas" aria-label="Handwriting canvas; touch or pointer required"></canvas>
           </div>
           <div class="kd-hint" id="knHint"></div>
           <div class="kd-result" id="knResult"></div>
@@ -481,7 +481,7 @@
   </main>
 
   <!-- ============ MODAL: add/edit word ============ -->
-  <div class="modal" id="modalWord" hidden>
+  <div class="modal" id="modalWord" role="dialog" aria-modal="true" aria-labelledby="modalWordTitle" hidden>
     <div class="modal__box">
       <h2 class="modal__title" id="modalWordTitle">New word</h2>
       <form id="formWord">
@@ -538,15 +538,15 @@
   </div>
 
   <!-- ============ MODAL: word detail ============ -->
-  <div class="modal" id="modalDetail" hidden>
+  <div class="modal" id="modalDetail" role="dialog" aria-modal="true" data-i18n-aria="detail.title" aria-label="Word details" hidden>
     <div class="modal__box modal__box--detail">
-      <button class="modal__close" id="btnCloseDetail" aria-label="×">×</button>
+      <button class="modal__close" id="btnCloseDetail" data-i18n-aria="word.cancel" aria-label="Close">×</button>
       <div class="detail" id="detailBody"></div>
     </div>
   </div>
 
   <!-- ============ MODAL: add/edit user grammar pattern ============ -->
-  <div class="modal" id="modalGrammar" hidden>
+  <div class="modal" id="modalGrammar" role="dialog" aria-modal="true" aria-labelledby="modalGrammarTitle" hidden>
     <div class="modal__box">
       <h2 class="modal__title" id="modalGrammarTitle">New pattern</h2>
       <form id="formGrammar">
@@ -584,6 +584,7 @@
   <script src="js/conjugation.js"></script>
   <script src="js/data.js"></script>
   <script src="js/i18n.js"></script>
+  <script src="js/ui-safety.js"></script>
   <script src="js/router.js"></script>
   <script src="js/vocabulary.js"></script>
   <script src="js/flashcards.js"></script>

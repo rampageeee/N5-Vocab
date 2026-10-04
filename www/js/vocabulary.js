@@ -260,6 +260,7 @@ const Vocab = (() => {
       render();
     };
     input.addEventListener('keydown', e => {
+      if (InputSafety.composing(e)) return;
       if (e.key === 'Enter') { e.preventDefault(); commit(); }
       if (e.key === 'Escape') { done = true; render(); }
     });
@@ -308,7 +309,7 @@ const Vocab = (() => {
     syncVerbClassVisibility();
     fillCategorySelect(cat);
     $('btnDeleteWord').hidden = true;
-    modal().hidden = false;
+    ModalFocus.open(modal());
     $('wKanji').focus();
   }
 
@@ -337,10 +338,10 @@ const Vocab = (() => {
     syncVerbClassVisibility();
     fillCategorySelect(w.category);
     $('btnDeleteWord').hidden = false;
-    modal().hidden = false;
+    ModalFocus.open(modal());
   }
 
-  function closeModal() { modal().hidden = true; }
+  function closeModal() { ModalFocus.close(modal()); }
 
   function submitWord(e) {
     e.preventDefault();
@@ -386,10 +387,10 @@ const Vocab = (() => {
       <div class="detail__trans">${esc(w.translation)}</div>
       ${charTiles}
       <button class="tool-btn detail__draw-link" data-draw="${esc(w.kanji)}">${esc(t('detail.draw'))}</button>`;
-    document.getElementById('modalDetail').hidden = false;
+    ModalFocus.open(document.getElementById('modalDetail'));
   }
 
-  function closeDetail() { document.getElementById('modalDetail').hidden = true; }
+  function closeDetail() { ModalFocus.close(document.getElementById('modalDetail')); }
 
   // ---- event delegation ------------------------------------
   function bind() {

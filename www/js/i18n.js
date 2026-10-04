@@ -138,6 +138,9 @@ const I18N = (() => {
       'checker.cat.verb': 'a verb',
       'checker.cat.predicate': 'a verb, adjective, or だ/です',
       'sentence.search': 'Find a word…',
+      'detail.title': "Word details",
+      'kanji.canvas': "Handwriting canvas; touch or pointer required",
+
       'sentence.knownOnly': "Only words in my dictionary (particles allowed)",
       'sentence.reviewed': "Starter example: construction reviewed; context is supplied by its translation.",
       'sentence.unreviewed': "Broader bank or custom example: grammar and translation not individually reviewed.",
@@ -345,6 +348,9 @@ const I18N = (() => {
       'checker.cat.verb': 'czasownik',
       'checker.cat.predicate': 'czasownik, przymiotnik lub だ/です',
       'sentence.search': 'Znajdź słowo…',
+      'detail.title': "Szczegóły słowa",
+      'kanji.canvas': "Pole pisma odręcznego; wymaga dotyku lub wskaźnika",
+
       'sentence.knownOnly': "Tylko słowa z mojego słownika (partykuły dozwolone)",
       'sentence.reviewed': "Przykład początkowy: konstrukcja sprawdzona; kontekst wynika z tłumaczenia.",
       'sentence.unreviewed': "Zdanie z banku lub własne: gramatyka i tłumaczenie nie były sprawdzane osobno.",

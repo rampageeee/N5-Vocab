@@ -197,6 +197,7 @@ const Drill = (() => {
     el('drAction').addEventListener('pointerdown', e => e.preventDefault());
     el('drAction').addEventListener('click', action);
     el('drInput').addEventListener('keydown', e => {
+      if (InputSafety.composing(e)) return;
       if (e.key !== 'Enter') return;
       e.preventDefault();
       action();

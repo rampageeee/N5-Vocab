@@ -304,6 +304,7 @@ const Flash = (() => {
     el('fcAction').addEventListener('pointerdown', e => e.preventDefault());
     el('fcAction').addEventListener('click', action);
     el('fcInput').addEventListener('keydown', e => {
+      if (InputSafety.composing(e)) return;
       if (e.key !== 'Enter') return;
       e.preventDefault();   // some soft keyboards dismiss themselves on an unhandled Enter
       action();
